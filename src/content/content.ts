@@ -22,6 +22,11 @@ class ContentScript {
     this.setupConnectionStatusListener();
     await this.waitForChat();
     await this.checkStreamAndConnect();
+    
+    // Set up periodic wallet status check
+    setInterval(() => {
+      this.checkWalletConnection();
+    }, 5000); // Check every 5 seconds
   }
 
   private setupConnectionStatusListener(): void {
@@ -31,6 +36,15 @@ class ContentScript {
         await this.createWaitingMessage();
       } else {
         await this.createInactiveMessage();
+      }
+    });
+
+    // Listen for wallet status changes from background script
+    chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+      if (message.action === 'walletStatusChanged') {
+        console.log('Wallet status changed:', message);
+        this.refreshWalletStatus();
+        sendResponse({ success: true });
       }
     });
   }
@@ -147,6 +161,23 @@ class ContentScript {
       console.error('Error checking wallet connection:', error);
       this.isWalletConnected = false;
       this.walletAddress = '';
+    }
+  }
+
+  private async refreshWalletStatus(): Promise<void> {
+    const previousStatus = this.isWalletConnected;
+    await this.checkWalletConnection();
+    
+    // Only re-render if the status actually changed
+    if (previousStatus !== this.isWalletConnected && this.container) {
+      console.log('Wallet status changed, refreshing UI:', this.isWalletConnected);
+      if (this.currentChallenge) {
+        await this.displayChallenge(this.currentChallenge);
+      } else if (this.websocketService.isStreamConnected()) {
+        await this.createWaitingMessage();
+      } else {
+        await this.createInactiveMessage();
+      }
     }
   }
 

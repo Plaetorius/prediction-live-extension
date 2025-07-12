@@ -36,6 +36,25 @@ chrome.runtime.onMessage.addListener(async (message, _sender, sendResponse) => {
           address: message.address,
           signClient: message.signClient
         };
+        
+        // Notify all content scripts about the wallet status change
+        try {
+          const tabs = await chrome.tabs.query({});
+          for (const tab of tabs) {
+            if (tab.id) {
+              await chrome.tabs.sendMessage(tab.id, {
+                action: 'walletStatusChanged',
+                isConnected: message.isConnected,
+                address: message.address
+              }).catch(() => {
+                // Ignore errors for tabs that don't have our content script
+              });
+            }
+          }
+        } catch (error) {
+          console.error('Error notifying content scripts:', error);
+        }
+        
         sendResponse({ success: true });
         break;
         

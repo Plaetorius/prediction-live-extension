@@ -1,10 +1,28 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useWalletConnect } from '../context/WalletConnectContext';
 import { createTransaction, validateTransaction } from '../utils/transaction-config';
 
 const Popup: React.FC = () => {
   const { isConnected, address, connect, disconnect, loading, signClient } = useWalletConnect();
   const [txStatus, setTxStatus] = useState<string | null>(null);
+
+  // Update background script when wallet connection status changes
+  useEffect(() => {
+    const updateBackgroundStatus = async () => {
+      try {
+        await chrome.runtime.sendMessage({
+          action: 'setWalletStatus',
+          isConnected,
+          address
+        });
+        console.log('Updated background status:', { isConnected, address });
+      } catch (error) {
+        console.error('Error updating background status:', error);
+      }
+    };
+
+    updateBackgroundStatus();
+  }, [isConnected, address]);
 
   // Format address for display (0x1234...5678)
   const formatAddress = (addr: string) => {
