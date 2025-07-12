@@ -1,18 +1,7 @@
 import { WebSocketService } from '../utils/websocket-service';
+import { Challenge, PredictionRequest, PredictionResponse } from '../types/websocket';
 
-// Remove unused imports and inline HTML for the prediction card and success animation
-
-function injectContentCSS() {
-  fetch(chrome.runtime.getURL('content.css'))
-    .then(res => res.text())
-    .then(css => {
-      const style = document.createElement('style');
-      style.textContent = css;
-      document.head.appendChild(style);
-    });
-}
-
-injectContentCSS();
+// CSS is automatically injected via manifest.json content_scripts declaration
 
 class ContentScript {
   private container: HTMLDivElement | null = null;
@@ -236,7 +225,7 @@ class ContentScript {
     `;
   }
 
-  /*private createInactiveMessage(): void {
+  private createInactiveMessage(): void {
     // Remove existing card if any
     const existingCard = document.getElementById('prediction-card-container');
     if (existingCard) {
@@ -269,7 +258,7 @@ class ContentScript {
         </div>
       </div>
     `;
-  }*/
+  }
 
   private async handleOptionClick(optionIndex: number): Promise<void> {
     console.log('Option clicked:', optionIndex);
