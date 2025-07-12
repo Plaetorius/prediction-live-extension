@@ -75,7 +75,7 @@ class ContentScript {
       this.setupMessageListener();
     } else {
       console.log('No active stream or connection failed');
-      this.createInactiveMessage();
+      this.createPredictionCard();
     }
   }
 
@@ -168,7 +168,7 @@ class ContentScript {
     }
   }
 
-  private createInactiveMessage(): void {
+  /*private createInactiveMessage(): void {
     // Remove existing card if any
     const existingCard = document.getElementById('prediction-card-container');
     if (existingCard) {
@@ -201,7 +201,7 @@ class ContentScript {
         </div>
       </div>
     `;
-  }
+  }*/
 
   private async handleAccept(): Promise<void> {
     console.log('Accept clicked');
