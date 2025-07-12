@@ -11,9 +11,8 @@ export default defineConfig({
     outDir: 'dist',
     rollupOptions: {
       input: {
-        popup: resolve(__dirname, 'src/popup/index.html'),
-        content: resolve(__dirname, 'src/content/content.ts'),
-        background: resolve(__dirname, 'src/background/background.ts')
+        popup: resolve(__dirname, 'src/popup/index.html')
+        // content and background are built separately
       },
       output: {
         entryFileNames: '[name].js',
@@ -26,7 +25,8 @@ export default defineConfig({
             return '[name].html'
           }
           return '[name].[ext]'
-        }
+        },
+        manualChunks: undefined
       }
     }
   },

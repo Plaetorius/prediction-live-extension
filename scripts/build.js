@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
 import { resolve } from 'path';
 
 // Read and fix manifest.json
@@ -46,5 +46,15 @@ try {
 } catch (error) {
   console.log('CSS file not found, skipping...');
 }
+
+// Remove problematic files that start with underscore
+try {
+  unlinkSync('dist/_commonjsHelpers.js');
+  console.log('Removed _commonjsHelpers.js');
+} catch (error) {
+  console.log('_commonjsHelpers.js not found, skipping...');
+}
+
+
 
 console.log('Build completed! Extension files are in the dist/ folder.'); 
