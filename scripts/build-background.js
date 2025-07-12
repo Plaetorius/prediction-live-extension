@@ -14,6 +14,8 @@ async function buildBackgroundScript() {
           input: resolve(__dirname, '../src/background/background.ts'),
           output: {
             entryFileNames: 'background.js',
+            chunkFileNames: 'chunk-[hash].js',
+            assetFileNames: 'asset-[hash].[ext]',
             format: 'iife',
             name: 'BackgroundScript'
           }

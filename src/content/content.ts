@@ -1,4 +1,5 @@
 import { WebSocketService } from '../utils/websocket-service';
+import { Challenge, PredictionRequest, PredictionResponse } from '../types/websocket';
 
 // Remove unused imports and inline HTML for the prediction card and success animation
 
@@ -18,7 +19,7 @@ class ContentScript {
   private container: HTMLDivElement | null = null;
   private websocketService: WebSocketService;
   private streamId: string | null = null;
-  private isConnected: boolean = false;
+  private currentChallenge: Challenge | null = null;
 
   constructor() {
     this.websocketService = new WebSocketService();
@@ -28,8 +29,20 @@ class ContentScript {
   private init(): void {
     console.log('Content script started');
     this.extractStreamId();
+    this.setupConnectionStatusListener();
     this.waitForChat().then(() => {
       this.checkStreamAndConnect();
+    });
+  }
+
+  private setupConnectionStatusListener(): void {
+    this.websocketService.onConnectionStatusChange((connected: boolean) => {
+      console.log('🔌 Connection status changed:', connected);
+      if (connected) {
+        this.createWaitingMessage();
+      } else {
+        this.createInactiveMessage();
+      }
     });
   }
 
@@ -65,39 +78,58 @@ class ContentScript {
       return;
     }
 
-    // Check if stream is active and connect
+    console.log('🔌 Attempting to connect to stream:', this.streamId);
+    
+    // Check if stream is open for challenges and connect
     const connected = await this.websocketService.connectToStream(this.streamId);
     
     if (connected) {
-      this.isConnected = true;
-      console.log('Connected to stream:', this.streamId);
-      this.createPredictionCard();
+      console.log('✅ Successfully connected to stream:', this.streamId);
       this.setupMessageListener();
     } else {
-      console.log('No active stream or connection failed');
+      console.log('❌ Failed to connect to stream:', this.streamId);
       this.createInactiveMessage();
     }
   }
 
   private setupMessageListener(): void {
-    // Listen for server responses
-    document.addEventListener('prediction-response', (event: any) => {
-      const response = event.detail;
-      this.handleServerResponse(response);
+    // Listen for challenge updates
+    document.addEventListener('challenge-update', (event: any) => {
+      console.log('🎯 Content script received challenge update event:', event);
+      console.log('📋 Event detail:', event.detail);
+      const payload = event.detail;
+      this.handleChallengeUpdate(payload);
     });
   }
 
-  private handleServerResponse(response: any): void {
-    console.log('Handling server response:', response);
+  private handleChallengeUpdate(payload: any): void {
+    console.log('🎯 Handling challenge update in content script:', payload);
+    console.log('📋 Payload type:', payload.type);
+    console.log('📋 Payload challenge:', payload.challenge);
     
-    if (response.type === 'success') {
-      this.triggerSuccessAnimation('Success!');
-    } else if (response.type === 'failure') {
-      this.triggerErrorAnimation(response.message || 'Failed');
+    if (payload.type === 'challenge:new' && payload.challenge) {
+      // New challenge created via broadcast
+      console.log('🎯 Processing new challenge:', payload.challenge);
+      this.currentChallenge = payload.challenge;
+      if (this.currentChallenge) {
+        console.log('✅ Displaying challenge with options:', this.currentChallenge.options);
+        this.displayChallenge(this.currentChallenge);
+      }
+    } else if (payload.eventType === 'UPDATE' && payload.new) {
+      // Challenge updated (closed/resolved) - this might come from database changes
+      console.log('🔄 Challenge state updated:', payload.new.state);
+      this.currentChallenge = payload.new;
+      if (payload.new.state === 'closed') {
+        this.updateChallengeToClosed();
+      } else if (payload.new.state === 'resolved') {
+        this.updateChallengeToResolved();
+      }
+    } else {
+      console.log('❓ Unknown challenge update type:', payload);
     }
   }
 
-  private createPredictionCard(): void {
+  private displayChallenge(challenge: Challenge): void {
     // Remove existing card if any
     const existingCard = document.getElementById('prediction-card-container');
     if (existingCard) {
@@ -118,54 +150,91 @@ class ContentScript {
     // Insert as first child of chat container
     chatContainer.insertBefore(this.container, chatContainer.firstChild);
 
-    // Inline HTML for the prediction card
+    // Inline HTML for the challenge card
     this.container.innerHTML = `
       <div class="mt-16 bg-black border border-red-500/30 rounded-2xl p-5 mx-4 shadow-2xl mb-4">
         <div class="text-center mb-5 pb-4 border-b border-red-500/20">
           <h3 class="!text-2xl text-white font-bold m-0 drop-shadow-lg">
-            Will the streamer win this game?
+            ${challenge.title}
           </h3>
           <div class="w-2 h-2 bg-green-500 rounded-full mx-auto mt-2 shadow-lg animate-pulse"></div>
-          <p class="text-green-400 text-sm mt-2">Connected to stream</p>
+          <p class="text-green-400 text-sm mt-2">Active Challenge</p>
         </div>
         <div class="flex gap-3 justify-center">
-          <button id="accept-btn" class="
+          <button id="option-1-btn" class="
             !text-xl !font-bold
             text-white border-none py-4 px-8 rounded-lg cursor-pointer
             transition-all duration-300 ease-out uppercase tracking-wider relative overflow-hidden
-            bg-gradient-to-br from-green-500 to-green-600 shadow-lg
+            bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg
             hover:transform hover:-translate-y-1 hover:scale-105 hover:shadow-xl
             active:transform active:translate-y-0 active:scale-100
             disabled:opacity-50 disabled:cursor-not-allowed
           ">
-            Accept
+            ${challenge.options[0]?.displayName || 'Option 1'}
+            <div class="text-sm opacity-75">${challenge.options[0]?.odds || 1.0}x</div>
           </button>
-          <button id="reject-btn" class="
+          <button id="option-2-btn" class="
             !text-xl !font-bold
             text-white border-none py-4 px-8 rounded-lg cursor-pointer
             transition-all duration-300 ease-out uppercase tracking-wider relative overflow-hidden
-            bg-gradient-to-br from-red-500 to-red-600 shadow-lg
+            bg-gradient-to-br from-purple-500 to-purple-600 shadow-lg
             hover:transform hover:-translate-y-1 hover:scale-105 hover:shadow-xl
             active:transform active:translate-y-0 active:scale-100
             disabled:opacity-50 disabled:cursor-not-allowed
           ">
-            Reject
+            ${challenge.options[1]?.displayName || 'Option 2'}
+            <div class="text-sm opacity-75">${challenge.options[1]?.odds || 1.0}x</div>
           </button>
         </div>
       </div>
     `;
 
     // Add event listeners
-    const acceptBtn = this.container.querySelector('#accept-btn') as HTMLButtonElement;
-    const rejectBtn = this.container.querySelector('#reject-btn') as HTMLButtonElement;
+    const option1Btn = this.container.querySelector('#option-1-btn') as HTMLButtonElement;
+    const option2Btn = this.container.querySelector('#option-2-btn') as HTMLButtonElement;
 
-    if (acceptBtn) {
-      acceptBtn.addEventListener('click', () => this.handleAccept());
+    if (option1Btn) {
+      option1Btn.addEventListener('click', () => this.handleOptionClick(0));
     }
 
-    if (rejectBtn) {
-      rejectBtn.addEventListener('click', () => this.handleReject());
+    if (option2Btn) {
+      option2Btn.addEventListener('click', () => this.handleOptionClick(1));
     }
+  }
+
+  private createWaitingMessage(): void {
+    // Remove existing card if any
+    const existingCard = document.getElementById('prediction-card-container');
+    if (existingCard) {
+      existingCard.remove();
+    }
+
+    // Find the chat container
+    const chatContainer = document.querySelector('.Layout-sc-1xcs6mc-0.gyMdFQ.stream-chat');
+    if (!chatContainer) {
+      console.error('Chat container not found');
+      return;
+    }
+
+    // Create container
+    this.container = document.createElement('div');
+    this.container.id = 'prediction-card-container';
+    
+    // Insert as first child of chat container
+    chatContainer.insertBefore(this.container, chatContainer.firstChild);
+
+    // Inline HTML for waiting message
+    this.container.innerHTML = `
+      <div class="mt-16 bg-black border border-green-500/30 rounded-2xl p-5 mx-4 shadow-2xl mb-4">
+        <div class="text-center mb-5 pb-4 border-b border-green-500/20">
+          <h3 class="!text-2xl text-white font-bold m-0 drop-shadow-lg">
+            Waiting for Challenge
+          </h3>
+          <div class="w-2 h-2 bg-green-500 rounded-full mx-auto mt-2 shadow-lg animate-pulse"></div>
+          <p class="text-green-400 text-sm mt-2">Connected - Ready for predictions</p>
+        </div>
+      </div>
+    `;
   }
 
   private createInactiveMessage(): void {
@@ -194,54 +263,112 @@ class ContentScript {
       <div class="mt-16 bg-black border border-gray-500/30 rounded-2xl p-5 mx-4 shadow-2xl mb-4">
         <div class="text-center mb-5 pb-4 border-b border-gray-500/20">
           <h3 class="!text-2xl text-white font-bold m-0 drop-shadow-lg">
-            No Active Prediction
+            No Active Challenges
           </h3>
           <div class="w-2 h-2 bg-gray-500 rounded-full mx-auto mt-2 shadow-lg"></div>
-          <p class="text-gray-400 text-sm mt-2">Waiting for streamer to start a prediction</p>
+          <p class="text-gray-400 text-sm mt-2">Waiting for streamer to start a challenge</p>
         </div>
       </div>
     `;
   }
 
-  private async handleAccept(): Promise<void> {
-    console.log('Accept clicked');
+  private async handleOptionClick(optionIndex: number): Promise<void> {
+    console.log('Option clicked:', optionIndex);
     
-    if (!this.isConnected) {
-      this.triggerErrorAnimation('Not connected to stream');
+    if (!this.websocketService.isStreamConnected() || !this.currentChallenge) {
+      this.triggerErrorAnimation('Not connected to stream or no active challenge');
       return;
     }
 
-    // Send prediction via WebSocket
-    await this.websocketService.sendPrediction('accept');
-  }
-
-  private async handleReject(): Promise<void> {
-    console.log('Reject clicked');
-    
-    if (!this.isConnected) {
-      this.triggerErrorAnimation('Not connected to stream');
+    const option = this.currentChallenge.options[optionIndex];
+    if (!option) {
+      this.triggerErrorAnimation('Invalid option selected');
       return;
     }
 
-    // Send prediction via WebSocket
-    await this.websocketService.sendPrediction('reject');
+    // For now, use a fixed amount and token name
+    const predictionRequest: PredictionRequest = {
+      challengeId: this.currentChallenge.id,
+      userId: 'dev-user-123', // Fixed for development
+      optionId: option.id,
+      amount: 100, // Fixed amount for now
+      tokenName: option.tokenName
+    };
+
+    // Send prediction via API
+    const response = await this.websocketService.sendPrediction(predictionRequest);
+    
+    if (response.success) {
+      this.showPredictionSuccess(response);
+    } else {
+      this.triggerErrorAnimation(response.message || 'Failed to place prediction');
+    }
   }
 
-  private triggerSuccessAnimation(message: string): void {
-    // Inline HTML for the success animation
+  private showPredictionSuccess(response: PredictionResponse): void {
+    // Show success popup with response JSON
     const overlay = document.createElement('div');
-    overlay.className = 'fixed inset-0 bg-gradient-radial from-green-500/10 to-transparent pointer-events-none z-[9999] animate-pulse';
+    overlay.className = 'fixed inset-0 bg-black/50 pointer-events-auto z-[9999]';
     document.body.appendChild(overlay);
 
-    const messageEl = document.createElement('div');
-    messageEl.className = 'fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-gradient-to-br from-green-500 to-green-600 text-white px-10 py-5 rounded-2xl text-2xl font-bold text-center shadow-2xl z-[10000]';
-    messageEl.textContent = message;
-    document.body.appendChild(messageEl);
+    const popup = document.createElement('div');
+    popup.className = 'fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white text-black p-6 rounded-2xl shadow-2xl z-[10000] max-w-md w-full mx-4';
+    popup.innerHTML = `
+      <div class="text-center mb-4">
+        <h3 class="text-xl font-bold text-green-600 mb-2">Prediction Placed!</h3>
+        <p class="text-sm text-gray-600">Response from server:</p>
+      </div>
+      <pre class="bg-gray-100 p-3 rounded text-xs overflow-auto max-h-40">${JSON.stringify(response, null, 2)}</pre>
+      <button id="close-popup" class="mt-4 w-full bg-blue-500 text-white py-2 rounded hover:bg-blue-600">Close</button>
+    `;
+    document.body.appendChild(popup);
 
+    // Add close functionality
+    const closeBtn = popup.querySelector('#close-popup') as HTMLButtonElement;
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => {
+        overlay.remove();
+        popup.remove();
+      });
+    }
+
+    // Auto-close after 5 seconds
     setTimeout(() => {
-      overlay.remove();
-      messageEl.remove();
-    }, 3000);
+      if (overlay.parentNode) {
+        overlay.remove();
+        popup.remove();
+      }
+    }, 5000);
+  }
+
+  private updateChallengeToClosed(): void {
+    if (this.container) {
+      const title = this.container.querySelector('h3');
+      if (title) {
+        title.textContent = 'Challenge Closed';
+      }
+      
+      const buttons = this.container.querySelectorAll('button');
+      buttons.forEach(btn => {
+        btn.disabled = true;
+        btn.classList.add('opacity-50', 'cursor-not-allowed');
+      });
+    }
+  }
+
+  private updateChallengeToResolved(): void {
+    if (this.container) {
+      const title = this.container.querySelector('h3');
+      if (title) {
+        title.textContent = 'Challenge Resolved';
+      }
+      
+      const buttons = this.container.querySelectorAll('button');
+      buttons.forEach(btn => {
+        btn.disabled = true;
+        btn.classList.add('opacity-50', 'cursor-not-allowed');
+      });
+    }
   }
 
   private triggerErrorAnimation(message: string): void {

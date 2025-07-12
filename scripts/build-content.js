@@ -14,6 +14,8 @@ async function buildContentScript() {
           input: resolve(__dirname, '../src/content/content.ts'),
           output: {
             entryFileNames: 'content.js',
+            chunkFileNames: 'chunk-[hash].js',
+            assetFileNames: 'asset-[hash].[ext]',
             format: 'iife',
             name: 'ContentScript'
           }
