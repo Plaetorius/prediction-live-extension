@@ -18,4 +18,9 @@ export interface PredictionCardProps {
 
 export interface PopupProps {
   onButtonClick: () => void;
+}
+
+export interface WalletInfo {
+  address: string;
+  isConnected: boolean;
 } 

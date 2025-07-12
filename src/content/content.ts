@@ -1,5 +1,4 @@
 import { WebSocketService } from '../utils/websocket-service';
-import { Challenge, PredictionRequest, PredictionResponse } from '../types/websocket';
 
 // Remove unused imports and inline HTML for the prediction card and success animation
 
@@ -87,7 +86,7 @@ class ContentScript {
       console.log('✅ Successfully connected to stream:', this.streamId);
       this.setupMessageListener();
     } else {
-      console.log('❌ Failed to connect to stream:', this.streamId);
+      console.log('No active stream or connection failed');
       this.createInactiveMessage();
     }
   }
@@ -155,7 +154,7 @@ class ContentScript {
       <div class="mt-16 bg-black border border-red-500/30 rounded-2xl p-5 mx-4 shadow-2xl mb-4">
         <div class="text-center mb-5 pb-4 border-b border-red-500/20">
           <h3 class="!text-2xl text-white font-bold m-0 drop-shadow-lg">
-            ${challenge.title}
+            Will the streamer win this game?
           </h3>
           <div class="w-2 h-2 bg-green-500 rounded-full mx-auto mt-2 shadow-lg animate-pulse"></div>
           <p class="text-green-400 text-sm mt-2">Active Challenge</p>
@@ -237,7 +236,7 @@ class ContentScript {
     `;
   }
 
-  private createInactiveMessage(): void {
+  /*private createInactiveMessage(): void {
     // Remove existing card if any
     const existingCard = document.getElementById('prediction-card-container');
     if (existingCard) {
@@ -270,7 +269,7 @@ class ContentScript {
         </div>
       </div>
     `;
-  }
+  }*/
 
   private async handleOptionClick(optionIndex: number): Promise<void> {
     console.log('Option clicked:', optionIndex);
