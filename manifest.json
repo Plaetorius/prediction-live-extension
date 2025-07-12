@@ -1,0 +1,29 @@
+{
+	"manifest_version": 3,
+	"name": "Twitch Title Changer",
+	"description": "Fetches a message and updates the Twitch stream title.",
+	"version": "1.0",
+	"permissions": ["scripting", "activeTab"],
+	"host_permissions": ["https://www.twitch.tv/*", "https://m.twitch.tv/*", "https://mydeployment.vercel.app/*"],
+	"background": {
+		"service_worker": "dist/background.js"
+	},
+	"content_scripts": [
+		{
+			"matches": ["https://www.twitch.tv/*", "https://m.twitch.tv/*"],
+			"js": ["dist/content.js"],
+			"css": ["dist/content.css"],
+			"run_at": "document_idle"
+		}
+	],
+	"web_accessible_resources": [
+		{
+			"resources": ["content.css"],
+			"matches": ["<all_urls>"]
+		}
+	],
+	"action": {
+		"default_title": "Change Twitch Title",
+		"default_popup": "dist/popup.html"
+	}
+}

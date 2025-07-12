@@ -1,0 +1,7 @@
+{
+  "watch": ["src", "tailwind.config.js", "postcss.config.js", "vite.config.ts"],
+  "ext": "ts,tsx,js,jsx,css,json",
+  "ignore": ["dist", "node_modules"],
+  "exec": "npm run build",
+  "delay": 1000
+} 
