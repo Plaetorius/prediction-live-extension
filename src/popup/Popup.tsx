@@ -1,28 +1,45 @@
-import React from 'react';
-import { PopupProps } from '../types';
+import React, { useState } from 'react';
 import { useWalletConnect } from '../context/WalletConnectContext';
+import { createTransaction, validateTransaction } from '../utils/transaction-config';
 
-const Popup: React.FC<PopupProps> = ({ onButtonClick }) => {
-  const { isConnected, address, connect, disconnect, loading } = useWalletConnect();
-
-  // Combined handler for button click
-  const handleButtonClick = async () => {
-    // If not connected, initiate wallet connection
-    if (!isConnected) {
-      await connect();
-    } else {
-      // If already connected, disconnect
-      await disconnect();
-    }
-    
-    // Call the original onButtonClick function with the wallet info
-    onButtonClick();
-  };
+const Popup: React.FC = () => {
+  const { isConnected, address, connect, disconnect, loading, signClient } = useWalletConnect();
+  const [txStatus, setTxStatus] = useState<string | null>(null);
 
   // Format address for display (0x1234...5678)
   const formatAddress = (addr: string) => {
     if (!addr) return '';
     return `${addr.substring(0, 6)}...${addr.substring(addr.length - 4)}`;
+  };
+
+  // Fonction pour envoyer la transaction sur Chiliz
+  const handleBet = async () => {
+    if (!isConnected || !signClient) {
+      setTxStatus('Please connect your wallet first.');
+      return;
+    }
+    setTxStatus('Signature in progress...');
+    try {
+      const transaction = createTransaction(88882, {
+        to: '0xbCE7457679913BD81Da8ba3106dF11191141E12D',
+        value: '0x' + (1e18).toString(16), // 1 CHZ
+        data: '0x',
+      });
+      if (!validateTransaction(transaction)) throw new Error('Invalid transaction');
+      await signClient.request({
+        topic: signClient.session.getAll()[0].topic,
+        request: {
+          method: 'eth_sendTransaction',
+          params: [transaction]
+        },
+        chainId: 'eip155:88882'
+      });
+      setTxStatus('Transaction sent!');
+      setTimeout(() => setTxStatus(null), 3000);
+    } catch (err: any) {
+      setTxStatus('Transaction failed: ' + (err?.message || ''));
+      setTimeout(() => setTxStatus(null), 4000);
+    }
   };
 
   return (
@@ -31,7 +48,7 @@ const Popup: React.FC<PopupProps> = ({ onButtonClick }) => {
         Twitch Title Changer
       </h1>
       <button
-        onClick={handleButtonClick}
+        onClick={isConnected ? disconnect : connect}
         disabled={loading}
         className="
           bg-twitch-purple text-white border-none py-3 px-6 text-base rounded-lg cursor-pointer
@@ -47,6 +64,22 @@ const Popup: React.FC<PopupProps> = ({ onButtonClick }) => {
           'Connect Wallet'
         )}
       </button>
+      <button
+        onClick={handleBet}
+        disabled={!isConnected || loading}
+        className="
+          mt-4 bg-green-600 text-white border-none py-3 px-6 text-base rounded-lg cursor-pointer
+          w-full transition-colors duration-200 hover:bg-green-700 active:bg-green-800
+          disabled:bg-gray-600 disabled:cursor-not-allowed
+        "
+      >
+        Bet (Send Transaction)
+      </button>
+      {txStatus && (
+        <div className="mt-4 p-3 bg-gray-900 text-white rounded-lg text-center text-sm">
+          {txStatus}
+        </div>
+      )}
     </div>
   );
 };

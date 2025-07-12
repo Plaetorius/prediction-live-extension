@@ -19,6 +19,7 @@ interface WalletConnectContextProps {
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
   loading: boolean;
+  updateBackgroundStatus: () => Promise<void>;
 }
 
 const WalletConnectContext = createContext<WalletConnectContextProps | null>(null);
@@ -203,6 +204,19 @@ export function WalletConnectProvider({ children }: { children: React.ReactNode 
     }
   };
 
+  const updateBackgroundStatus = async () => {
+    try {
+      await chrome.runtime.sendMessage({
+        action: 'setWalletStatus',
+        isConnected,
+        address,
+        signClient
+      });
+    } catch (error) {
+      console.error('Error updating background status:', error);
+    }
+  };
+
   const value = {
     signClient,
     web3Modal,
@@ -210,7 +224,8 @@ export function WalletConnectProvider({ children }: { children: React.ReactNode 
     address,
     connect,
     disconnect,
-    loading
+    loading,
+    updateBackgroundStatus
   };
 
   return (

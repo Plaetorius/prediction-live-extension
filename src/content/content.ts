@@ -19,18 +19,151 @@ class ContentScript {
   private websocketService: WebSocketService;
   private streamId: string | null = null;
   private isConnected: boolean = false;
+  private walletAddress: string = '';
+  private isWalletConnected: boolean = false;
 
   constructor() {
     this.websocketService = new WebSocketService();
     this.init();
   }
 
-  private init(): void {
+  private async init(): Promise<void> {
     console.log('Content script started');
     this.extractStreamId();
     this.waitForChat().then(() => {
       this.checkStreamAndConnect();
     });
+  }
+
+  private async checkWalletConnection(): Promise<void> {
+    try {
+      // Send message to popup to get wallet status
+      const response = await chrome.runtime.sendMessage({ 
+        action: 'getWalletStatus' 
+      });
+      
+      if (response && response.isConnected) {
+        this.isWalletConnected = true;
+        this.walletAddress = response.address;
+        console.log('Wallet connected from popup:', this.walletAddress);
+      } else {
+        this.isWalletConnected = false;
+        this.walletAddress = '';
+      }
+    } catch (error) {
+      console.error('Error checking wallet connection:', error);
+      this.isWalletConnected = false;
+      this.walletAddress = '';
+    }
+  }
+
+  private async createPredictionCard(): Promise<void> {
+    // Check wallet connection status from popup
+    await this.checkWalletConnection();
+    
+    // Remove existing card if any
+    const existingCard = document.getElementById('prediction-card-container');
+    if (existingCard) {
+      existingCard.remove();
+    }
+
+    // Find the chat container
+    const chatContainer = document.querySelector('.Layout-sc-1xcs6mc-0.gyMdFQ.stream-chat');
+    if (!chatContainer) {
+      console.error('Chat container not found');
+      return;
+    }
+
+    // Create container
+    this.container = document.createElement('div');
+    this.container.id = 'prediction-card-container';
+    
+    // Insert as first child of chat container
+    chatContainer.insertBefore(this.container, chatContainer.firstChild);
+
+    // Inline HTML for the prediction card
+    this.container.innerHTML = `
+      <div class="mt-16 bg-black border border-red-500/30 rounded-2xl p-5 mx-4 shadow-2xl mb-4">
+        <div class="text-center mb-5 pb-4 border-b border-red-500/20">
+          <h3 class="!text-2xl text-white font-bold m-0 drop-shadow-lg">
+            Will the streamer win this game (test) ?
+          </h3>
+          <div class="w-2 h-2 bg-green-500 rounded-full mx-auto mt-2 shadow-lg animate-pulse"></div>
+          <p class="text-green-400 text-sm mt-2">Connected to stream</p>
+          
+          <!-- Wallet Connection Status -->
+          <div class="mt-3 p-3 bg-gray-800/50 rounded-lg">
+            <div class="flex items-center justify-center gap-2 mb-2">
+              <div class="w-2 h-2 ${this.isWalletConnected ? 'bg-green-500' : 'bg-red-500'} rounded-full shadow-lg ${this.isWalletConnected ? 'animate-pulse' : ''}"></div>
+              <span class="text-sm ${this.isWalletConnected ? 'text-green-400' : 'text-red-400'}">
+                ${this.isWalletConnected ? 'Wallet Connected' : 'Wallet Disconnected'}
+              </span>
+            </div>
+            ${this.isWalletConnected && this.walletAddress ? 
+              `<p class="text-xs text-gray-400 font-mono">${this.walletAddress.substring(0, 6)}...${this.walletAddress.substring(this.walletAddress.length - 4)}</p>` : 
+              '<button id="connect-wallet-btn" class="text-xs text-blue-400 hover:text-blue-300 underline">Open Popup to Connect</button>'
+            }
+          </div>
+        </div>
+        <div class="flex gap-3 justify-center">
+          <button id="accept-btn" class="
+            !text-xl !font-bold
+            text-white border-none py-4 px-8 rounded-lg cursor-pointer
+            transition-all duration-300 ease-out uppercase tracking-wider relative overflow-hidden
+            bg-gradient-to-br from-green-500 to-green-600 shadow-lg
+            hover:transform hover:-translate-y-1 hover:scale-105 hover:shadow-xl
+            active:transform active:translate-y-0 active:scale-100
+            disabled:opacity-50 disabled:cursor-not-allowed
+          ">
+            Accept
+          </button>
+          <button id="reject-btn" class="
+            !text-xl !font-bold
+            text-white border-none py-4 px-8 rounded-lg cursor-pointer
+            transition-all duration-300 ease-out uppercase tracking-wider relative overflow-hidden
+            bg-gradient-to-br from-red-500 to-red-600 shadow-lg
+            hover:transform hover:-translate-y-1 hover:scale-105 hover:shadow-xl
+            active:transform active:translate-y-0 active:scale-100
+            disabled:opacity-50 disabled:cursor-not-allowed
+          ">
+            Reject
+          </button>
+        </div>
+      </div>
+    `;
+
+    // Add event listeners
+    const acceptBtn = this.container.querySelector('#accept-btn') as HTMLButtonElement;
+    const rejectBtn = this.container.querySelector('#reject-btn') as HTMLButtonElement;
+    const connectWalletBtn = this.container.querySelector('#connect-wallet-btn') as HTMLButtonElement;
+
+    if (acceptBtn) {
+      acceptBtn.addEventListener('click', () => this.handleAccept());
+    }
+
+    if (rejectBtn) {
+      rejectBtn.addEventListener('click', () => this.handleReject());
+    }
+
+    if (connectWalletBtn) {
+      connectWalletBtn.addEventListener('click', () => this.openPopup());
+    }
+  }
+
+  private openPopup(): void {
+    // Open the extension popup
+    chrome.runtime.sendMessage({ action: 'openPopup' });
+  }
+
+
+
+  private async sendTransaction(choice: 'accept' | 'reject'): Promise<void> {
+    // Ouvre la popup et passe l'intention au background
+    await chrome.runtime.sendMessage({
+      action: 'openPopupForTransaction',
+      choice
+    });
+    this.triggerSuccessAnimation('Please sign the transaction in the popup!');
   }
 
   private extractStreamId(): void {
@@ -71,11 +204,11 @@ class ContentScript {
     if (connected) {
       this.isConnected = true;
       console.log('Connected to stream:', this.streamId);
-      this.createPredictionCard();
+      await this.createPredictionCard();
       this.setupMessageListener();
     } else {
       console.log('No active stream or connection failed');
-      this.createPredictionCard();
+      await this.createPredictionCard();
     }
   }
 
@@ -97,76 +230,7 @@ class ContentScript {
     }
   }
 
-  private createPredictionCard(): void {
-    // Remove existing card if any
-    const existingCard = document.getElementById('prediction-card-container');
-    if (existingCard) {
-      existingCard.remove();
-    }
 
-    // Find the chat container
-    const chatContainer = document.querySelector('.Layout-sc-1xcs6mc-0.gyMdFQ.stream-chat');
-    if (!chatContainer) {
-      console.error('Chat container not found');
-      return;
-    }
-
-    // Create container
-    this.container = document.createElement('div');
-    this.container.id = 'prediction-card-container';
-    
-    // Insert as first child of chat container
-    chatContainer.insertBefore(this.container, chatContainer.firstChild);
-
-    // Inline HTML for the prediction card
-    this.container.innerHTML = `
-      <div class="mt-16 bg-black border border-red-500/30 rounded-2xl p-5 mx-4 shadow-2xl mb-4">
-        <div class="text-center mb-5 pb-4 border-b border-red-500/20">
-          <h3 class="!text-2xl text-white font-bold m-0 drop-shadow-lg">
-            Will the streamer win this game (test) ?
-          </h3>
-          <div class="w-2 h-2 bg-green-500 rounded-full mx-auto mt-2 shadow-lg animate-pulse"></div>
-          <p class="text-green-400 text-sm mt-2">Connected to stream</p>
-        </div>
-        <div class="flex gap-3 justify-center">
-          <button id="accept-btn" class="
-            !text-xl !font-bold
-            text-white border-none py-4 px-8 rounded-lg cursor-pointer
-            transition-all duration-300 ease-out uppercase tracking-wider relative overflow-hidden
-            bg-gradient-to-br from-green-500 to-green-600 shadow-lg
-            hover:transform hover:-translate-y-1 hover:scale-105 hover:shadow-xl
-            active:transform active:translate-y-0 active:scale-100
-            disabled:opacity-50 disabled:cursor-not-allowed
-          ">
-            Accept
-          </button>
-          <button id="reject-btn" class="
-            !text-xl !font-bold
-            text-white border-none py-4 px-8 rounded-lg cursor-pointer
-            transition-all duration-300 ease-out uppercase tracking-wider relative overflow-hidden
-            bg-gradient-to-br from-red-500 to-red-600 shadow-lg
-            hover:transform hover:-translate-y-1 hover:scale-105 hover:shadow-xl
-            active:transform active:translate-y-0 active:scale-100
-            disabled:opacity-50 disabled:cursor-not-allowed
-          ">
-            Reject
-          </button>
-        </div>
-      </div>
-    `;
-
-    // Add event listeners
-    const acceptBtn = this.container.querySelector('#accept-btn') as HTMLButtonElement;
-    const rejectBtn = this.container.querySelector('#reject-btn') as HTMLButtonElement;
-
-    if (acceptBtn) {
-      acceptBtn.addEventListener('click', () => this.handleAccept());
-    }
-
-    if (rejectBtn) {
-      rejectBtn.addEventListener('click', () => this.handleReject());
-    }
-  }
 
   /*private createInactiveMessage(): void {
     // Remove existing card if any
@@ -211,8 +275,8 @@ class ContentScript {
       return;
     }
 
-    // Send prediction via WebSocket
-    await this.websocketService.sendPrediction('accept');
+    // Send transaction and then prediction
+    await this.sendTransaction('accept');
   }
 
   private async handleReject(): Promise<void> {
@@ -223,8 +287,8 @@ class ContentScript {
       return;
     }
 
-    // Send prediction via WebSocket
-    await this.websocketService.sendPrediction('reject');
+    // Send transaction and then prediction
+    await this.sendTransaction('reject');
   }
 
   private triggerSuccessAnimation(message: string): void {
