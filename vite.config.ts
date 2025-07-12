@@ -16,7 +16,7 @@ export default defineConfig({
       },
       output: {
         entryFileNames: '[name].js',
-        chunkFileNames: '[name].js',
+        chunkFileNames: 'chunk-[hash].js',
         assetFileNames: (assetInfo) => {
           if (assetInfo.name?.endsWith('.css')) {
             return '[name].css'
@@ -24,7 +24,7 @@ export default defineConfig({
           if (assetInfo.name?.endsWith('.html')) {
             return '[name].html'
           }
-          return '[name].[ext]'
+          return 'asset-[hash].[ext]'
         },
         manualChunks: undefined
       }

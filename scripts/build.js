@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, readdirSync } from 'fs';
 import { resolve } from 'path';
 
 // Read and fix manifest.json
@@ -47,14 +47,21 @@ try {
   console.log('CSS file not found, skipping...');
 }
 
-// Remove problematic files that start with underscore
+// Remove all files that start with underscore (reserved names)
 try {
-  unlinkSync('dist/_commonjsHelpers.js');
-  console.log('Removed _commonjsHelpers.js');
+  const distFiles = readdirSync('dist');
+  distFiles.forEach(file => {
+    if (file.startsWith('_')) {
+      try {
+        unlinkSync(`dist/${file}`);
+        console.log(`Removed reserved file: ${file}`);
+      } catch (error) {
+        console.log(`Could not remove ${file}:`, error.message);
+      }
+    }
+  });
 } catch (error) {
-  console.log('_commonjsHelpers.js not found, skipping...');
+  console.log('Could not read dist directory:', error.message);
 }
-
-
 
 console.log('Build completed! Extension files are in the dist/ folder.'); 
