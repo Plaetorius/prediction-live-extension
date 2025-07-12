@@ -123,7 +123,7 @@ class ContentScript {
       <div class="mt-16 bg-black border border-red-500/30 rounded-2xl p-5 mx-4 shadow-2xl mb-4">
         <div class="text-center mb-5 pb-4 border-b border-red-500/20">
           <h3 class="!text-2xl text-white font-bold m-0 drop-shadow-lg">
-            Will the streamer win this game?
+            Will the streamer win this game (test) ?
           </h3>
           <div class="w-2 h-2 bg-green-500 rounded-full mx-auto mt-2 shadow-lg animate-pulse"></div>
           <p class="text-green-400 text-sm mt-2">Connected to stream</p>
