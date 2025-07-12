@@ -1,4 +1,4 @@
-import { WebSocketService } from '../utils/websocket-service';
+import { WebSocketService } from '../utils/walletconnect';
 
 // Remove unused imports and inline HTML for the prediction card and success animation
 
