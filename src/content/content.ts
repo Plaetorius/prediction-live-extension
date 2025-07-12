@@ -20,50 +20,22 @@ class ContentScript {
     console.log('Content script started');
     this.extractStreamId();
     this.setupConnectionStatusListener();
-    this.waitForChat().then(() => {
-      this.checkStreamAndConnect();
-    });
+    await this.waitForChat();
+    await this.checkStreamAndConnect();
   }
 
   private setupConnectionStatusListener(): void {
-    this.websocketService.onConnectionStatusChange((connected: boolean) => {
+    this.websocketService.onConnectionStatusChange(async (connected: boolean) => {
       console.log('🔌 Connection status changed:', connected);
       if (connected) {
-        this.createWaitingMessage();
+        await this.createWaitingMessage();
       } else {
-        this.createInactiveMessage();
+        await this.createInactiveMessage();
       }
     });
   }
 
-  private async checkWalletConnection(): Promise<void> {
-    try {
-      // Send message to popup to get wallet status
-      const response = await chrome.runtime.sendMessage({ 
-        action: 'getWalletStatus' 
-      });
-      
-      if (response && response.isConnected) {
-        this.isWalletConnected = true;
-        this.walletAddress = response.address;
-        console.log('Wallet connected from popup:', this.walletAddress);
-      } else {
-        this.isWalletConnected = false;
-        this.walletAddress = '';
-      }
-    } catch (error) {
-      console.error('Error checking wallet connection:', error);
-      this.isWalletConnected = false;
-      this.walletAddress = '';
-    }
-  }
-
-  private async createPredictionCard(): Promise<void> {
-    // Check wallet connection status from popup
-    await this.checkWalletConnection();
-    
   private extractStreamId(): void {
-    // Extract streamer ID from URL
     const url = window.location.href;
     const match = url.match(/twitch\.tv\/([^\/\?]+)/);
     if (match) {
@@ -96,7 +68,6 @@ class ContentScript {
 
     console.log('🔌 Attempting to connect to stream:', this.streamId);
     
-    // Check if stream is open for challenges and connect
     const connected = await this.websocketService.connectToStream(this.streamId);
     
     if (connected) {
@@ -104,17 +75,22 @@ class ContentScript {
       this.setupMessageListener();
     } else {
       console.log('No active stream or connection failed');
-      this.createInactiveMessage();
+      await this.createInactiveMessage();
     }
   }
 
   private setupMessageListener(): void {
-    // Listen for challenge updates
     document.addEventListener('challenge-update', (event: any) => {
       console.log('🎯 Content script received challenge update event:', event);
       console.log('📋 Event detail:', event.detail);
       const payload = event.detail;
       this.handleChallengeUpdate(payload);
+    });
+
+    // Listen for server responses
+    document.addEventListener('prediction-response', (event: any) => {
+      const response = event.detail;
+      this.handleServerResponse(response);
     });
   }
 
@@ -124,7 +100,6 @@ class ContentScript {
     console.log('📋 Payload challenge:', payload.challenge);
     
     if (payload.type === 'challenge:new' && payload.challenge) {
-      // New challenge created via broadcast
       console.log('🎯 Processing new challenge:', payload.challenge);
       this.currentChallenge = payload.challenge;
       if (this.currentChallenge) {
@@ -132,7 +107,6 @@ class ContentScript {
         this.displayChallenge(this.currentChallenge);
       }
     } else if (payload.eventType === 'UPDATE' && payload.new) {
-      // Challenge updated (closed/resolved) - this might come from database changes
       console.log('🔄 Challenge state updated:', payload.new.state);
       this.currentChallenge = payload.new;
       if (payload.new.state === 'closed') {
@@ -145,7 +119,41 @@ class ContentScript {
     }
   }
 
-  private displayChallenge(challenge: Challenge): void {
+  private handleServerResponse(response: any): void {
+    console.log('Handling server response:', response);
+    
+    if (response.type === 'success') {
+      this.triggerSuccessAnimation('Success!');
+    } else if (response.type === 'failure') {
+      this.triggerErrorAnimation(response.message || 'Failed');
+    }
+  }
+
+  private async checkWalletConnection(): Promise<void> {
+    try {
+      const response = await chrome.runtime.sendMessage({ 
+        action: 'getWalletStatus' 
+      });
+      
+      if (response && response.isConnected) {
+        this.isWalletConnected = true;
+        this.walletAddress = response.address;
+        console.log('Wallet connected from popup:', this.walletAddress);
+      } else {
+        this.isWalletConnected = false;
+        this.walletAddress = '';
+      }
+    } catch (error) {
+      console.error('Error checking wallet connection:', error);
+      this.isWalletConnected = false;
+      this.walletAddress = '';
+    }
+  }
+
+  private async displayChallenge(challenge: Challenge): Promise<void> {
+    // Check wallet connection first
+    await this.checkWalletConnection();
+
     // Remove existing card if any
     const existingCard = document.getElementById('prediction-card-container');
     if (existingCard) {
@@ -166,31 +174,30 @@ class ContentScript {
     // Insert as first child of chat container
     chatContainer.insertBefore(this.container, chatContainer.firstChild);
 
-    // Inline HTML for the challenge card
-    this.container.innerHTML = `
-      <div class="mt-16 bg-black border border-red-500/30 rounded-2xl p-5 mx-4 shadow-2xl mb-4">
-        <div class="text-center mb-5 pb-4 border-b border-red-500/20">
-          <h3 class="!text-2xl text-white font-bold m-0 drop-shadow-lg">
-            Will the streamer win this game?
-          </h3>
-          <div class="w-2 h-2 bg-green-500 rounded-full mx-auto mt-2 shadow-lg animate-pulse"></div>
-          <p class="text-green-400 text-sm mt-2">Connected to stream</p>
-          
-          <!-- Wallet Connection Status -->
-          <div class="mt-3 p-3 bg-gray-800/50 rounded-lg">
-            <div class="flex items-center justify-center gap-2 mb-2">
-              <div class="w-2 h-2 ${this.isWalletConnected ? 'bg-green-500' : 'bg-red-500'} rounded-full shadow-lg ${this.isWalletConnected ? 'animate-pulse' : ''}"></div>
-              <span class="text-sm ${this.isWalletConnected ? 'text-green-400' : 'text-red-400'}">
-                ${this.isWalletConnected ? 'Wallet Connected' : 'Wallet Disconnected'}
-              </span>
-            </div>
-            ${this.isWalletConnected && this.walletAddress ? 
-              `<p class="text-xs text-gray-400 font-mono">${this.walletAddress.substring(0, 6)}...${this.walletAddress.substring(this.walletAddress.length - 4)}</p>` : 
-              '<button id="connect-wallet-btn" class="text-xs text-blue-400 hover:text-blue-300 underline">Open Popup to Connect</button>'
-            }
-          </div>
-          <p class="text-green-400 text-sm mt-2">Active Challenge</p>
-        </div>
+    // Build wallet status section
+    const walletStatusClass = this.isWalletConnected ? 'text-green-400' : 'text-red-400';
+    const walletDotClass = this.isWalletConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500';
+    const walletText = this.isWalletConnected ? 'Wallet Connected' : 'Wallet Disconnected';
+    
+    let walletDetails = '';
+    if (this.isWalletConnected && this.walletAddress) {
+      const shortAddress = `${this.walletAddress.substring(0, 6)}...${this.walletAddress.substring(this.walletAddress.length - 4)}`;
+      walletDetails = `<p class="text-xs text-gray-400 font-mono">${shortAddress}</p>`;
+    } else {
+      walletDetails = `
+        <button id="connect-wallet-btn" class="
+          mt-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold 
+          rounded-lg transition-colors duration-200 border-none cursor-pointer
+        ">
+          🔗 Connect Wallet
+        </button>
+      `;
+    }
+
+    // Prediction buttons section
+    let predictionButtons = '';
+    if (this.isWalletConnected) {
+      predictionButtons = `
         <div class="flex gap-3 justify-center">
           <button id="option-1-btn" class="
             !text-xl !font-bold
@@ -217,6 +224,44 @@ class ContentScript {
             <div class="text-sm opacity-75">${challenge.options[1]?.odds || 1.0}x</div>
           </button>
         </div>
+      `;
+    } else {
+      predictionButtons = `
+        <div class="text-center py-4">
+          <p class="text-yellow-400 text-sm mb-3">Connect your wallet to place predictions</p>
+          <button id="connect-wallet-main-btn" class="
+            px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white text-lg font-bold 
+            rounded-xl transition-all duration-300 border-none cursor-pointer
+            transform hover:scale-105 shadow-lg
+          ">
+            🔗 Connect Wallet to Predict
+          </button>
+        </div>
+      `;
+    }
+
+    // Inline HTML for the challenge card
+    this.container.innerHTML = `
+      <div class="mt-16 bg-black border border-red-500/30 rounded-2xl p-5 mx-4 shadow-2xl mb-4">
+        <div class="text-center mb-5 pb-4 border-b border-red-500/20">
+          <h3 class="!text-2xl text-white font-bold m-0 drop-shadow-lg">
+            Will the streamer win this game?
+          </h3>
+          <div class="w-2 h-2 bg-green-500 rounded-full mx-auto mt-2 shadow-lg animate-pulse"></div>
+          <p class="text-green-400 text-sm mt-2">Active Challenge</p>
+          
+          <!-- Wallet Connection Status -->
+          <div class="mt-3 p-3 bg-gray-800/50 rounded-lg">
+            <div class="flex items-center justify-center gap-2 mb-2">
+              <div class="w-2 h-2 ${walletDotClass} rounded-full shadow-lg"></div>
+              <span class="text-sm ${walletStatusClass}">
+                ${walletText}
+              </span>
+            </div>
+            ${walletDetails}
+          </div>
+        </div>
+        ${predictionButtons}
       </div>
     `;
 
@@ -224,6 +269,7 @@ class ContentScript {
     const option1Btn = this.container.querySelector('#option-1-btn') as HTMLButtonElement;
     const option2Btn = this.container.querySelector('#option-2-btn') as HTMLButtonElement;
     const connectWalletBtn = this.container.querySelector('#connect-wallet-btn') as HTMLButtonElement;
+    const connectWalletMainBtn = this.container.querySelector('#connect-wallet-main-btn') as HTMLButtonElement;
 
     if (option1Btn) {
       option1Btn.addEventListener('click', () => this.handleOptionClick(0));
@@ -232,9 +278,20 @@ class ContentScript {
     if (option2Btn) {
       option2Btn.addEventListener('click', () => this.handleOptionClick(1));
     }
+
+    if (connectWalletBtn) {
+      connectWalletBtn.addEventListener('click', () => this.openPopup());
+    }
+
+    if (connectWalletMainBtn) {
+      connectWalletMainBtn.addEventListener('click', () => this.openPopup());
+    }
   }
 
-  private createWaitingMessage(): void {
+  private async createWaitingMessage(): Promise<void> {
+    // Check wallet connection first
+    await this.checkWalletConnection();
+
     // Remove existing card if any
     const existingCard = document.getElementById('prediction-card-container');
     if (existingCard) {
@@ -248,99 +305,32 @@ class ContentScript {
       return;
     }
 
-    if (connectWalletBtn) {
-      connectWalletBtn.addEventListener('click', () => this.openPopup());
-    }
-  }
-
-  private openPopup(): void {
-    // Open the extension popup
-    chrome.runtime.sendMessage({ action: 'openPopup' });
-  }
-
-
-
-  private async sendTransaction(choice: 'accept' | 'reject'): Promise<void> {
-    // Ouvre la popup et passe l'intention au background
-    await chrome.runtime.sendMessage({
-      action: 'openPopupForTransaction',
-      choice
-    });
-    this.triggerSuccessAnimation('Please sign the transaction in the popup!');
-  }
-
-  private extractStreamId(): void {
-    // Extract streamer ID from URL
-    const url = window.location.href;
-    const match = url.match(/twitch\.tv\/([^\/\?]+)/);
-    if (match) {
-      this.streamId = match[1];
-      console.log('Extracted stream ID:', this.streamId);
-    } else {
-      console.error('Could not extract stream ID from URL');
-    }
-  }
-
-  private waitForChat(): Promise<void> {
-    return new Promise((resolve) => {
-      const checkChat = () => {
-        const chatContainer = document.querySelector('[data-test-selector="chat-scrollable-area__message-container"]');
-        if (chatContainer) {
-          resolve();
-        } else {
-          setTimeout(checkChat, 100);
-        }
-      };
-      checkChat();
-    });
-  }
-
-  private async checkStreamAndConnect(): Promise<void> {
-    if (!this.streamId) {
-      console.error('No stream ID available');
-      return;
-    }
-
-    // Check if stream is active and connect
-    const connected = await this.websocketService.connectToStream(this.streamId);
-    
-    if (connected) {
-      this.isConnected = true;
-      console.log('Connected to stream:', this.streamId);
-      await this.createPredictionCard();
-      this.setupMessageListener();
-    } else {
-      console.log('No active stream or connection failed');
-      await this.createPredictionCard();
-    }
-  }
-
-  private setupMessageListener(): void {
-    // Listen for server responses
-    document.addEventListener('prediction-response', (event: any) => {
-      const response = event.detail;
-      this.handleServerResponse(response);
-    });
-  }
-
-  private handleServerResponse(response: any): void {
-    console.log('Handling server response:', response);
-    
-    if (response.type === 'success') {
-      this.triggerSuccessAnimation('Success!');
-    } else if (response.type === 'failure') {
-      this.triggerErrorAnimation(response.message || 'Failed');
-    }
-  }
-
-
-
     // Create container
     this.container = document.createElement('div');
     this.container.id = 'prediction-card-container';
     
     // Insert as first child of chat container
     chatContainer.insertBefore(this.container, chatContainer.firstChild);
+
+    // Build wallet status section
+    const walletStatusClass = this.isWalletConnected ? 'text-green-400' : 'text-red-400';
+    const walletDotClass = this.isWalletConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500';
+    const walletText = this.isWalletConnected ? 'Wallet Connected' : 'Wallet Disconnected';
+    
+    let walletDetails = '';
+    if (this.isWalletConnected && this.walletAddress) {
+      const shortAddress = `${this.walletAddress.substring(0, 6)}...${this.walletAddress.substring(this.walletAddress.length - 4)}`;
+      walletDetails = `<p class="text-xs text-gray-400 font-mono">${shortAddress}</p>`;
+    } else {
+      walletDetails = `
+        <button id="connect-wallet-btn" class="
+          mt-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold 
+          rounded-lg transition-colors duration-200 border-none cursor-pointer
+        ">
+          🔗 Connect Wallet
+        </button>
+      `;
+    }
 
     // Inline HTML for waiting message
     this.container.innerHTML = `
@@ -351,12 +341,32 @@ class ContentScript {
           </h3>
           <div class="w-2 h-2 bg-green-500 rounded-full mx-auto mt-2 shadow-lg animate-pulse"></div>
           <p class="text-green-400 text-sm mt-2">Connected - Ready for predictions</p>
+          
+          <!-- Wallet Connection Status -->
+          <div class="mt-3 p-3 bg-gray-800/50 rounded-lg">
+            <div class="flex items-center justify-center gap-2 mb-2">
+              <div class="w-2 h-2 ${walletDotClass} rounded-full shadow-lg"></div>
+              <span class="text-sm ${walletStatusClass}">
+                ${walletText}
+              </span>
+            </div>
+            ${walletDetails}
+          </div>
         </div>
       </div>
     `;
+
+    // Add event listener for wallet connect button
+    const connectWalletBtn = this.container.querySelector('#connect-wallet-btn') as HTMLButtonElement;
+    if (connectWalletBtn) {
+      connectWalletBtn.addEventListener('click', () => this.openPopup());
+    }
   }
 
-  private createInactiveMessage(): void {
+  private async createInactiveMessage(): Promise<void> {
+    // Check wallet connection first
+    await this.checkWalletConnection();
+
     // Remove existing card if any
     const existingCard = document.getElementById('prediction-card-container');
     if (existingCard) {
@@ -377,6 +387,26 @@ class ContentScript {
     // Insert as first child of chat container
     chatContainer.insertBefore(this.container, chatContainer.firstChild);
 
+    // Build wallet status section
+    const walletStatusClass = this.isWalletConnected ? 'text-green-400' : 'text-red-400';
+    const walletDotClass = this.isWalletConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500';
+    const walletText = this.isWalletConnected ? 'Wallet Connected' : 'Wallet Disconnected';
+    
+    let walletDetails = '';
+    if (this.isWalletConnected && this.walletAddress) {
+      const shortAddress = `${this.walletAddress.substring(0, 6)}...${this.walletAddress.substring(this.walletAddress.length - 4)}`;
+      walletDetails = `<p class="text-xs text-gray-400 font-mono">${shortAddress}</p>`;
+    } else {
+      walletDetails = `
+        <button id="connect-wallet-btn" class="
+          mt-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold 
+          rounded-lg transition-colors duration-200 border-none cursor-pointer
+        ">
+          🔗 Connect Wallet
+        </button>
+      `;
+    }
+
     // Inline HTML for inactive message
     this.container.innerHTML = `
       <div class="mt-16 bg-black border border-gray-500/30 rounded-2xl p-5 mx-4 shadow-2xl mb-4">
@@ -386,9 +416,31 @@ class ContentScript {
           </h3>
           <div class="w-2 h-2 bg-gray-500 rounded-full mx-auto mt-2 shadow-lg"></div>
           <p class="text-gray-400 text-sm mt-2">Waiting for streamer to start a challenge</p>
+          
+          <!-- Wallet Connection Status -->
+          <div class="mt-3 p-3 bg-gray-800/50 rounded-lg">
+            <div class="flex items-center justify-center gap-2 mb-2">
+              <div class="w-2 h-2 ${walletDotClass} rounded-full shadow-lg"></div>
+              <span class="text-sm ${walletStatusClass}">
+                ${walletText}
+              </span>
+            </div>
+            ${walletDetails}
+          </div>
         </div>
       </div>
     `;
+
+    // Add event listener for wallet connect button
+    const connectWalletBtn = this.container.querySelector('#connect-wallet-btn') as HTMLButtonElement;
+    if (connectWalletBtn) {
+      connectWalletBtn.addEventListener('click', () => this.openPopup());
+    }
+  }
+
+  private openPopup(): void {
+    // Open the extension popup
+    chrome.runtime.sendMessage({ action: 'openPopup' });
   }
 
   private async handleOptionClick(optionIndex: number): Promise<void> {
@@ -402,6 +454,14 @@ class ContentScript {
     const option = this.currentChallenge.options[optionIndex];
     if (!option) {
       this.triggerErrorAnimation('Invalid option selected');
+      return;
+    }
+
+    // Check wallet connection before proceeding
+    await this.checkWalletConnection();
+    
+    if (!this.isWalletConnected) {
+      this.triggerErrorAnimation('Please connect your wallet first');
       return;
     }
 
@@ -498,6 +558,23 @@ class ContentScript {
 
     const messageEl = document.createElement('div');
     messageEl.className = 'fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-gradient-to-br from-red-500 to-red-600 text-white px-10 py-5 rounded-2xl text-2xl font-bold text-center shadow-2xl z-[10000]';
+    messageEl.textContent = message;
+    document.body.appendChild(messageEl);
+
+    setTimeout(() => {
+      overlay.remove();
+      messageEl.remove();
+    }, 3000);
+  }
+
+  private triggerSuccessAnimation(message: string): void {
+    // Inline HTML for the success animation
+    const overlay = document.createElement('div');
+    overlay.className = 'fixed inset-0 bg-gradient-radial from-green-500/10 to-transparent pointer-events-none z-[9999] animate-pulse';
+    document.body.appendChild(overlay);
+
+    const messageEl = document.createElement('div');
+    messageEl.className = 'fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-gradient-to-br from-green-500 to-green-600 text-white px-10 py-5 rounded-2xl text-2xl font-bold text-center shadow-2xl z-[10000]';
     messageEl.textContent = message;
     document.body.appendChild(messageEl);
 
