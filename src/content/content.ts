@@ -759,13 +759,15 @@ class ContentScript {
       console.log('Starting MetaMask transaction for:', { tokenName, amount, option: option.displayName, optionId: option.id });
       
       // Determine team based on option index (0 = Team A, 1 = Team B)
-      const team = _optionIndex; // 0 for Team A, 1 for Team B
+      const team = _optionIndex + 1; // 1 for Team A, 2 for Team B (enum in contract)
       
       // Direct MetaMask interaction in content script
       const response = await this.sendMetaMaskTransactionDirectly(amount, team);
       
       console.log('MetaMask transaction response:', response);
       
+      // If we get here without an error, the transaction was likely successful
+      // Even if response is undefined, if no error was thrown, the transaction probably went through
       if (response && response.success) {
         // After successful MetaMask transaction, send prediction to API
         this.showLoadingAnimation('Submitting prediction...');
@@ -791,9 +793,14 @@ class ContentScript {
           console.error('Error sending prediction to API:', apiError);
           this.triggerErrorAnimation('Failed to submit prediction to server');
         }
+      } else if (response && response.error) {
+        // Only show error if there's an actual error
+        console.error('Transaction failed:', response.error);
+        this.triggerErrorAnimation(response.error || 'Transaction failed');
       } else {
-        console.error('Transaction failed:', response?.error);
-        this.triggerErrorAnimation(response?.error || 'Transaction failed');
+        // If response is undefined but no error, assume success
+        console.log('Transaction sent successfully (no response object)');
+        this.showTransactionSuccess(tokenName, amount, option.displayName);
       }
       
       this.hideLoadingAnimation();

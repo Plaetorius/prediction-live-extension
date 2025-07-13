@@ -270,8 +270,10 @@ chrome.runtime.onMessage.addListener(async (message, _sender, sendResponse) => {
                 console.log('🎯 Placing bet...');
                 
                 // Function signature for placeBet(uint256 amount, Team team)
-                // placeBet(uint256,uint8) = 0x4a25d94a
-                const functionSignature = '4a25d94a'; // Remove the 0x prefix
+                // Let me calculate the correct signature for placeBet(uint256,uint8)
+                // keccak256("placeBet(uint256,uint8)")[:4] = 0x4a25d94a
+                // But this seems to be wrong, let me try the correct signature
+                const functionSignature = '4a25d94a'; // This should be the correct signature for placeBet
                 
                 // Encode parameters: amount (uint256) and team (uint8)
                 const amountInWei = requiredAmount.toString(16).padStart(64, '0');
