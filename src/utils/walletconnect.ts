@@ -14,7 +14,7 @@ export const DEFAULT_NAMESPACES = {
       'personal_sign',
       'eth_signTypedData'
     ],
-    chains: ['eip155:1', 'eip155:56', 'eip155:137'],
+    chains: ['eip155:1', 'eip155:56', 'eip155:137', 'eip155:88882'], // Added Chiliz testnet
     events: ['chainChanged', 'accountsChanged']
   }
 };
