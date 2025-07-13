@@ -209,12 +209,15 @@ export class WebSocketService {
 
   async sendPrediction(predictionRequest: PredictionRequest): Promise<PredictionResponse> {
     try {
-      const response = await fetch('https://prediction-live.vercel.app/api/predictions', {
+      const response = await fetch(`https://prediction-live.vercel.app/api/predictions/${predictionRequest.challengeId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(predictionRequest)
+        body: JSON.stringify({
+          option_id: predictionRequest.optionId,
+          amount: predictionRequest.amount
+        })
       });
 
       const data: PredictionResponse = await response.json();

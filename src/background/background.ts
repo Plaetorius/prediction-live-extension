@@ -201,7 +201,7 @@ chrome.runtime.onMessage.addListener(async (message, _sender, sendResponse) => {
           const result = await chrome.scripting.executeScript({
             target: { tabId: tabId },
             world: 'MAIN',
-            func: async (amount) => {
+            func: async (amount, team) => {
               try {
                 console.log('🔗 Checking for MetaMask...');
                 console.log('Window object:', typeof window);
@@ -258,12 +258,35 @@ chrome.runtime.onMessage.addListener(async (message, _sender, sendResponse) => {
                 
                 console.log('💰 Preparing transaction...');
                 
-                // Create transaction parameters
+                const contractAddress = '0x5c4f413e25ec5ee063b38f3f74ec3aa0a0b6a2b5';
+                // For now, let's skip the approval check and go directly to the bet
+                // We'll need the actual CHZ token address later
+                console.log('⚠️ Skipping token approval check - need actual CHZ token address');
+                
+                // For now, we'll place the bet directly without token approval
+                // TODO: Add proper CHZ token approval when we have the correct address
+                const requiredAmount = amount * 1e18;
+                
+                console.log('🎯 Placing bet...');
+                
+                // Function signature for placeBet(uint256 amount, Team team)
+                // placeBet(uint256,uint8) = 0x4a25d94a
+                const functionSignature = '4a25d94a'; // Remove the 0x prefix
+                
+                // Encode parameters: amount (uint256) and team (uint8)
+                const amountInWei = requiredAmount.toString(16).padStart(64, '0');
+                const teamValue = team || 0; // Default to Team A if not specified
+                const teamHex = teamValue.toString(16).padStart(64, '0');
+                
+                // Combine function signature and parameters
+                const data = functionSignature + amountInWei + teamHex;
+                
                 const transactionParameters = {
-                  to: '0x0000000000000000000000000000000000000000', // Replace with actual contract address
+                  to: contractAddress,
                   from: account,
-                  value: '0x' + (amount * 1e18).toString(16), // Convert to wei
-                  gas: '0x5208', // 21000 gas
+                  value: '0x0', // No ETH transfer, only token transfer
+                  data: '0x' + data, // Add the 0x prefix back
+                  gas: '0x186A0', // 100000 gas for contract interaction
                 };
                 
                 console.log('📤 Sending transaction...');
@@ -282,7 +305,7 @@ chrome.runtime.onMessage.addListener(async (message, _sender, sendResponse) => {
                 return { success: false, error: error.message || 'Transaction failed' };
               }
             },
-            args: [message.amount]
+            args: [message.amount, message.team]
           });
 
           console.log('Script execution result:', result);
