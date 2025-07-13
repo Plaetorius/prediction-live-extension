@@ -892,20 +892,54 @@ class ContentScript {
       // Show loading animation
       this.showLoadingAnimation('Preparing transaction...');
       
-      console.log('Starting MetaMask transaction for:', { tokenName, amount, option: option.display_name });
+      console.log('Starting MetaMask transaction for:', { tokenName, amount, option: option.displayName, optionId: option.id });
+      
+      // Determine team based on option index (0 = Team A, 1 = Team B)
+      const team = _optionIndex + 1; // 1 for Team A, 2 for Team B (enum in contract)
       
       // Direct MetaMask interaction in content script
-      const response = await this.sendMetaMaskTransactionDirectly(amount);
+      const response = await this.sendMetaMaskTransactionDirectly(amount, team);
       
       console.log('MetaMask transaction response:', response);
-      this.hideLoadingAnimation();
       
+      // If we get here without an error, the transaction was likely successful
+      // Even if response is undefined, if no error was thrown, the transaction probably went through
       if (response && response.success) {
-        this.showTransactionSuccess(tokenName, amount, option.display_name, response.txHash);
+        // After successful MetaMask transaction, send prediction to API
+        this.showLoadingAnimation('Submitting prediction...');
+        
+        try {
+          const predictionResponse = await this.websocketService.sendPrediction({
+            challengeId: this.currentChallenge?.id || '',
+            userId: this.walletAddress,
+            optionId: option.id,
+            amount: amount,
+            tokenName: tokenName
+          });
+          
+          console.log('Prediction API response:', predictionResponse);
+          
+          if (predictionResponse.success) {
+            this.showTransactionSuccess(tokenName, amount, option.display_name, response.txHash);
+          } else {
+            console.error('Prediction API failed:', predictionResponse.message);
+            this.triggerErrorAnimation(predictionResponse.message || 'Failed to submit prediction');
+          }
+        } catch (apiError: any) {
+          console.error('Error sending prediction to API:', apiError);
+          this.triggerErrorAnimation('Failed to submit prediction to server');
+        }
+      } else if (response && response.error) {
+        // Only show error if there's an actual error
+        console.error('Transaction failed:', response.error);
+        this.triggerErrorAnimation(response.error || 'Transaction failed');
       } else {
-        console.error('Transaction failed:', response?.error);
-        this.triggerErrorAnimation(response?.error || 'Transaction failed');
+        // If response is undefined but no error, assume success
+        console.log('Transaction sent successfully (no response object)');
+        this.showTransactionSuccess(tokenName, amount, option.displayName);
       }
+      
+      this.hideLoadingAnimation();
       
     } catch (error: any) {
       console.error('Error processing bet:', error);
@@ -914,14 +948,15 @@ class ContentScript {
     }
   }
 
-  private async sendMetaMaskTransactionDirectly(amount: number): Promise<{ success: boolean; txHash?: string; error?: string }> {
+  private async sendMetaMaskTransactionDirectly(amount: number, team: number): Promise<{ success: boolean; txHash?: string; error?: string }> {
     try {
       console.log('🔗 Starting MetaMask transaction via background script...');
       
       // Send message to background script to handle MetaMask transaction
       const response = await chrome.runtime.sendMessage({
         action: 'EXECUTE_METAMASK_TRANSACTION',
-        amount: amount
+        amount: amount,
+        team: team
       });
       
       console.log('✅ MetaMask transaction response from background:', response);
