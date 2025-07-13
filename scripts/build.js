@@ -47,6 +47,19 @@ try {
   console.log('CSS file not found, skipping...');
 }
 
+// Copy MetaMask scripts
+try {
+  copyFileSync('src/utils/metamask-injection.js', 'dist/metamask-injection.js');
+} catch (error) {
+  console.log('MetaMask injection script not found, skipping...');
+}
+
+try {
+  copyFileSync('src/utils/metamask-script.js', 'dist/metamask-script.js');
+} catch (error) {
+  console.log('MetaMask script not found, skipping...');
+}
+
 // Remove all files that start with underscore (reserved names)
 try {
   const distFiles = readdirSync('dist');

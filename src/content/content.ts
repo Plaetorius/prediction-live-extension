@@ -1,5 +1,5 @@
 import { WebSocketService } from '../utils/websocket-service';
-import { Challenge, PredictionRequest, PredictionResponse } from '../types/websocket';
+import { Challenge } from '../types/websocket';
 
 // CSS is automatically injected via manifest.json content_scripts declaration
 
@@ -496,60 +496,275 @@ class ContentScript {
       return;
     }
 
-    // For now, use a fixed amount and token name
-    const predictionRequest: PredictionRequest = {
-      challengeId: this.currentChallenge.id,
-      userId: 'dev-user-123', // Fixed for development
-      optionId: option.id,
-      amount: 100, // Fixed amount for now
-      tokenName: option.tokenName
-    };
+    // Show token input modal
+    this.showTokenInputModal(optionIndex, option);
+  }
 
-    // Send prediction via API
-    const response = await this.websocketService.sendPrediction(predictionRequest);
+  private showTokenInputModal(optionIndex: number, option: any): void {
+    // Create modal overlay
+    const overlay = document.createElement('div');
+    overlay.className = 'fixed inset-0 bg-black/80 backdrop-blur-sm z-[9999] flex items-center justify-center';
+    overlay.id = 'token-input-overlay';
     
-    if (response.success) {
-      this.showPredictionSuccess(response);
-    } else {
-      this.triggerErrorAnimation(response.message || 'Failed to place prediction');
+    // Create modal content
+    const modal = document.createElement('div');
+    modal.className = 'bg-gradient-to-br from-gray-900 to-black border border-purple-500/50 rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl transform transition-all duration-300 scale-95 opacity-0';
+    modal.id = 'token-input-modal';
+    
+    modal.innerHTML = `
+      <div class="text-center mb-6">
+        <h3 class="text-2xl font-bold text-white mb-2">Place Your Bet</h3>
+        <p class="text-purple-400 text-sm">${option.displayName || `Option ${optionIndex + 1}`}</p>
+        <div class="w-16 h-1 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full mx-auto mt-4"></div>
+      </div>
+      
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-300 mb-2">Token Name</label>
+          <input 
+            type="text" 
+            id="token-name-input"
+            placeholder="Enter token name (e.g., CHZ, BTC, ETH)"
+            class="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition-all duration-200"
+            maxlength="10"
+          />
+        </div>
+        
+        <div>
+          <label class="block text-sm font-medium text-gray-300 mb-2">Amount (CHZ)</label>
+          <input 
+            type="number" 
+            id="token-amount-input"
+            placeholder="Enter amount"
+            min="1"
+            max="1000"
+            value="10"
+            class="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 outline-none transition-all duration-200"
+          />
+        </div>
+        
+        <div class="flex gap-3 pt-4">
+          <button 
+            id="cancel-bet-btn"
+            class="flex-1 px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors duration-200 font-medium"
+          >
+            Cancel
+          </button>
+          <button 
+            id="confirm-bet-btn"
+            class="flex-1 px-4 py-3 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-lg transition-all duration-200 font-medium transform hover:scale-105"
+          >
+            Place Bet
+          </button>
+        </div>
+      </div>
+    `;
+    
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    
+    // Animate modal in
+    setTimeout(() => {
+      modal.classList.remove('scale-95', 'opacity-0');
+      modal.classList.add('scale-100', 'opacity-100');
+    }, 10);
+    
+    // Add event listeners
+    const tokenNameInput = modal.querySelector('#token-name-input') as HTMLInputElement;
+    const tokenAmountInput = modal.querySelector('#token-amount-input') as HTMLInputElement;
+    const cancelBtn = modal.querySelector('#cancel-bet-btn') as HTMLButtonElement;
+    const confirmBtn = modal.querySelector('#confirm-bet-btn') as HTMLButtonElement;
+    
+    // Auto-focus on token name input
+    setTimeout(() => tokenNameInput?.focus(), 100);
+    
+    // Handle cancel
+    cancelBtn?.addEventListener('click', () => {
+      this.closeTokenInputModal();
+    });
+    
+    // Handle confirm
+    confirmBtn?.addEventListener('click', async () => {
+      const tokenName = tokenNameInput?.value.trim();
+      const amount = parseInt(tokenAmountInput?.value || '0');
+      
+      if (!tokenName) {
+        this.showInputError('Please enter a token name');
+        return;
+      }
+      
+      if (!amount || amount < 1) {
+        this.showInputError('Please enter a valid amount');
+        return;
+      }
+      
+      await this.processBet(optionIndex, option, tokenName, amount);
+      this.closeTokenInputModal();
+    });
+    
+    // Handle Enter key
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        confirmBtn?.click();
+      } else if (e.key === 'Escape') {
+        cancelBtn?.click();
+      }
+    };
+    
+    document.addEventListener('keydown', handleKeyPress);
+    
+    // Store cleanup function
+    (overlay as any).cleanup = () => {
+      document.removeEventListener('keydown', handleKeyPress);
+    };
+  }
+
+  private closeTokenInputModal(): void {
+    const overlay = document.getElementById('token-input-overlay');
+    if (overlay) {
+      const modal = overlay.querySelector('#token-input-modal');
+      if (modal) {
+        modal.classList.add('scale-95', 'opacity-0');
+        setTimeout(() => {
+          if ((overlay as any).cleanup) {
+            (overlay as any).cleanup();
+          }
+          overlay.remove();
+        }, 200);
+      }
     }
   }
 
-  private showPredictionSuccess(response: PredictionResponse): void {
-    // Show success popup with response JSON
-    const overlay = document.createElement('div');
-    overlay.className = 'fixed inset-0 bg-black/50 pointer-events-auto z-[9999]';
-    document.body.appendChild(overlay);
+  private showInputError(message: string): void {
+    // Create error notification
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'fixed top-4 right-4 bg-red-600 text-white px-6 py-3 rounded-lg shadow-lg z-[10000] transform translate-x-full transition-transform duration-300';
+    errorDiv.textContent = message;
+    document.body.appendChild(errorDiv);
+    
+    // Animate in
+    setTimeout(() => {
+      errorDiv.classList.remove('translate-x-full');
+    }, 10);
+    
+    // Remove after 3 seconds
+    setTimeout(() => {
+      errorDiv.classList.add('translate-x-full');
+      setTimeout(() => errorDiv.remove(), 300);
+    }, 3000);
+  }
 
-    const popup = document.createElement('div');
-    popup.className = 'fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white text-black p-6 rounded-2xl shadow-2xl z-[10000] max-w-md w-full mx-4';
-    popup.innerHTML = `
-      <div class="text-center mb-4">
-        <h3 class="text-xl font-bold text-green-600 mb-2">Prediction Placed!</h3>
-        <p class="text-sm text-gray-600">Response from server:</p>
-      </div>
-      <pre class="bg-gray-100 p-3 rounded text-xs overflow-auto max-h-40">${JSON.stringify(response, null, 2)}</pre>
-      <button id="close-popup" class="mt-4 w-full bg-blue-500 text-white py-2 rounded hover:bg-blue-600">Close</button>
-    `;
-    document.body.appendChild(popup);
-
-    // Add close functionality
-    const closeBtn = popup.querySelector('#close-popup') as HTMLButtonElement;
-    if (closeBtn) {
-      closeBtn.addEventListener('click', () => {
-        overlay.remove();
-        popup.remove();
-      });
+  private async processBet(_optionIndex: number, option: any, tokenName: string, amount: number): Promise<void> {
+    try {
+      // Show loading animation
+      this.showLoadingAnimation('Preparing transaction...');
+      
+      console.log('Starting MetaMask transaction for:', { tokenName, amount, option: option.displayName });
+      
+      // Direct MetaMask interaction in content script
+      const response = await this.sendMetaMaskTransactionDirectly(amount);
+      
+      console.log('MetaMask transaction response:', response);
+      this.hideLoadingAnimation();
+      
+      if (response && response.success) {
+        this.showTransactionSuccess(tokenName, amount, option.displayName, response.txHash);
+      } else {
+        console.error('Transaction failed:', response?.error);
+        this.triggerErrorAnimation(response?.error || 'Transaction failed');
+      }
+      
+    } catch (error: any) {
+      console.error('Error processing bet:', error);
+      this.hideLoadingAnimation();
+      this.triggerErrorAnimation(error.message || 'Failed to process transaction');
     }
+  }
 
+  private async sendMetaMaskTransactionDirectly(amount: number): Promise<{ success: boolean; txHash?: string; error?: string }> {
+    try {
+      console.log('🔗 Starting MetaMask transaction via background script...');
+      
+      // Send message to background script to handle MetaMask transaction
+      const response = await chrome.runtime.sendMessage({
+        action: 'EXECUTE_METAMASK_TRANSACTION',
+        amount: amount
+      });
+      
+      console.log('✅ MetaMask transaction response from background:', response);
+      return response;
+      
+    } catch (error: any) {
+      console.error('❌ Error in sendMetaMaskTransactionDirectly:', error);
+      return { success: false, error: error.message || 'Failed to execute transaction' };
+    }
+  }
+
+
+
+  private showLoadingAnimation(message: string): void {
+    const overlay = document.createElement('div');
+    overlay.className = 'fixed inset-0 bg-black/80 backdrop-blur-sm z-[10000] flex items-center justify-center';
+    overlay.id = 'loading-overlay';
+    
+    overlay.innerHTML = `
+      <div class="bg-gradient-to-br from-gray-900 to-black border border-purple-500/50 rounded-2xl p-8 text-center">
+        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto mb-4"></div>
+        <p class="text-white text-lg font-medium">${message}</p>
+        <p class="text-gray-400 text-sm mt-2">Please check your wallet...</p>
+      </div>
+    `;
+    
+    document.body.appendChild(overlay);
+  }
+
+  private hideLoadingAnimation(): void {
+    const overlay = document.getElementById('loading-overlay');
+    if (overlay) {
+      overlay.remove();
+    }
+  }
+
+  private showTransactionSuccess(tokenName: string, amount: number, optionName: string, txHash?: string): void {
+    this.hideLoadingAnimation();
+    
+    const overlay = document.createElement('div');
+    overlay.className = 'fixed inset-0 bg-black/80 backdrop-blur-sm z-[10000] flex items-center justify-center';
+    
+    overlay.innerHTML = `
+      <div class="bg-gradient-to-br from-green-900 to-green-800 border border-green-500/50 rounded-2xl p-8 text-center max-w-md mx-4">
+        <div class="text-6xl mb-4">🎉</div>
+        <h3 class="text-2xl font-bold text-white mb-2">Bet Placed!</h3>
+        <p class="text-green-300 mb-4">Your transaction has been submitted</p>
+        <div class="bg-black/30 rounded-lg p-4 mb-4 text-left">
+          <p class="text-sm text-gray-300"><span class="text-green-400">Token:</span> ${tokenName}</p>
+          <p class="text-sm text-gray-300"><span class="text-green-400">Amount:</span> ${amount} CHZ</p>
+          <p class="text-sm text-gray-300"><span class="text-green-400">Option:</span> ${optionName}</p>
+          ${txHash ? `<p class="text-sm text-gray-300"><span class="text-green-400">Tx Hash:</span> <span class="font-mono text-xs">${txHash.substring(0, 10)}...</span></p>` : ''}
+        </div>
+        <button id="close-success-btn" class="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors duration-200">
+          Close
+        </button>
+      </div>
+    `;
+    
+    document.body.appendChild(overlay);
+    
     // Auto-close after 5 seconds
     setTimeout(() => {
       if (overlay.parentNode) {
         overlay.remove();
-        popup.remove();
       }
     }, 5000);
+    
+    // Manual close button
+    const closeBtn = overlay.querySelector('#close-success-btn') as HTMLButtonElement;
+    closeBtn?.addEventListener('click', () => {
+      overlay.remove();
+    });
   }
+
+
 
   private updateChallengeToClosed(): void {
     if (this.container) {
