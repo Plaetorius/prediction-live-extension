@@ -10,6 +10,7 @@ class ContentScript {
   private currentChallenge: Challenge | null = null;
   private walletAddress: string = '';
   private isWalletConnected: boolean = false;
+  private countdownInterval: NodeJS.Timeout | null = null;
 
   constructor() {
     this.websocketService = new WebSocketService();
@@ -128,6 +129,13 @@ class ContentScript {
       } else if (payload.new.state === 'resolved') {
         this.updateChallengeToResolved();
       }
+    } else if (payload.id && payload.title && payload.options) {
+      // Handle direct challenge payload (not nested under 'challenge' property)
+      console.log('🎯 Processing direct challenge payload:', payload);
+      this.currentChallenge = payload;
+      if (this.currentChallenge) {
+        this.displayChallenge(this.currentChallenge);
+      }
     } else {
       console.log('❓ Unknown challenge update type:', payload);
     }
@@ -182,6 +190,12 @@ class ContentScript {
   }
 
   private async displayChallenge(challenge: Challenge): Promise<void> {
+    // Clear existing countdown timer
+    if (this.countdownInterval) {
+      clearInterval(this.countdownInterval);
+      this.countdownInterval = null;
+    }
+
     // Check wallet connection first
     await this.checkWalletConnection();
 
@@ -239,7 +253,7 @@ class ContentScript {
             active:transform active:translate-y-0 active:scale-100
             disabled:opacity-50 disabled:cursor-not-allowed
           ">
-            ${challenge.options[0]?.displayName || 'Option 1'}
+            ${challenge.options[0]?.display_name || 'Option 1'}
             <div class="text-sm opacity-75">${challenge.options[0]?.odds || 1.0}x</div>
           </button>
           <button id="option-2-btn" class="
@@ -251,35 +265,28 @@ class ContentScript {
             active:transform active:translate-y-0 active:scale-100
             disabled:opacity-50 disabled:cursor-not-allowed
           ">
-            ${challenge.options[1]?.displayName || 'Option 2'}
+            ${challenge.options[1]?.display_name || 'Option 2'}
             <div class="text-sm opacity-75">${challenge.options[1]?.odds || 1.0}x</div>
           </button>
         </div>
       `;
-    } else {
-      predictionButtons = `
-        <div class="text-center py-4">
-          <p class="text-yellow-400 text-sm mb-3">Connect your wallet to place predictions</p>
-          <button id="connect-wallet-main-btn" class="
-            px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white text-lg font-bold 
-            rounded-xl transition-all duration-300 border-none cursor-pointer
-            transform hover:scale-105 shadow-lg
-          ">
-            🔗 Connect Wallet to Predict
-          </button>
-        </div>
-      `;
     }
-
+    // Calculate initial intensity based on time remaining
+    const timePercentage = this.getTimeRemainingPercentage(challenge);
+    const intensityClasses = this.getIntensityClasses(timePercentage);
+    
     // Inline HTML for the challenge card
     this.container.innerHTML = `
-      <div class="mt-16 bg-black border border-red-500/30 rounded-2xl p-5 mx-4 shadow-2xl mb-4">
-        <div class="text-center mb-5 pb-4 border-b border-red-500/20">
+      <div id="prediction-card" class="mt-16 ${intensityClasses} rounded-2xl p-5 mx-4 shadow-2xl mb-4">
+        <div class="text-center mb-5 pb-4 border-b border-current/20">
           <h3 class="!text-2xl text-white font-bold m-0 drop-shadow-lg">
-            Will the streamer win this game?
+            ${challenge.title}
           </h3>
           <div class="w-2 h-2 bg-green-500 rounded-full mx-auto mt-2 shadow-lg animate-pulse"></div>
           <p class="text-green-400 text-sm mt-2">Active Challenge</p>
+          <div class="mt-2 p-2 bg-current/10 rounded-lg border border-current/30">
+            <p class="text-current text-sm opacity-90">Closing in: <span id="countdown-timer" class="font-mono font-bold">${challenge.closing_at ? this.formatCountdown(challenge.closing_at) : 'Loading...'}</span></p>
+          </div>
           
           <!-- Wallet Connection Status -->
           <div class="mt-3 p-3 bg-gray-800/50 rounded-lg">
@@ -317,6 +324,9 @@ class ContentScript {
     if (connectWalletMainBtn) {
       connectWalletMainBtn.addEventListener('click', () => this.openPopup());
     }
+
+    // Start countdown timer (will handle missing closing_at gracefully)
+    this.startCountdown(challenge);
   }
 
   private async createWaitingMessage(): Promise<void> {
@@ -474,6 +484,93 @@ class ContentScript {
     chrome.runtime.sendMessage({ action: 'openPopup' });
   }
 
+  private formatCountdown(closingAt: string): string {
+    const now = new Date();
+    const closingTime = new Date(closingAt);
+    const timeLeft = closingTime.getTime() - now.getTime();
+
+    if (timeLeft <= 0) {
+      return 'CLOSED';
+    }
+
+    const minutes = Math.floor(timeLeft / (1000 * 60));
+    const seconds = Math.floor((timeLeft % (1000 * 60)) / 1000);
+
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  }
+
+  private getTimeRemainingPercentage(challenge: Challenge): number {
+    if (!challenge.closing_at || !challenge.created_at) return 1;
+    
+    const now = new Date();
+    const createdTime = new Date(challenge.created_at);
+    const closingTime = new Date(challenge.closing_at);
+    
+    const totalDuration = closingTime.getTime() - createdTime.getTime();
+    const timeElapsed = now.getTime() - createdTime.getTime();
+    
+    const percentage = Math.max(0, Math.min(1, 1 - (timeElapsed / totalDuration)));
+    return percentage;
+  }
+
+  private getIntensityClasses(percentage: number): string {
+    if (percentage > 0.5) {
+      // More than 50% time left - calm green
+      return 'bg-black border-green-500/30 text-green-400';
+    } else if (percentage > 0.25) {
+      // 25-50% time left - warning yellow
+      return 'bg-gradient-to-br from-yellow-900/20 to-black border-yellow-500/40 text-yellow-400';
+    } else if (percentage > 0.1) {
+      // 10-25% time left - urgent orange
+      return 'bg-gradient-to-br from-orange-900/30 to-black border-orange-500/50 shadow-orange-500/20 text-orange-400';
+    } else {
+      // Less than 10% time left - critical red with pulsing
+      return 'bg-gradient-to-br from-red-900/40 to-black border-red-500/60 shadow-red-500/30 animate-pulse text-red-400';
+    }
+  }
+
+  private startCountdown(challenge: Challenge): void {
+    // Clear existing interval
+    if (this.countdownInterval) {
+      clearInterval(this.countdownInterval);
+    }
+
+    // Update countdown every second
+    this.countdownInterval = setInterval(() => {
+      const countdownElement = document.getElementById('countdown-timer');
+      const cardElement = document.getElementById('prediction-card');
+      
+      if (countdownElement) {
+        if (challenge.closing_at) {
+          const countdown = this.formatCountdown(challenge.closing_at);
+          countdownElement.textContent = countdown;
+          
+          // Update card background intensity based on time remaining
+          if (cardElement) {
+            const percentage = this.getTimeRemainingPercentage(challenge);
+            const intensityClasses = this.getIntensityClasses(percentage);
+            
+            // Remove old intensity classes and add new ones
+            const baseClasses = 'mt-16 rounded-2xl p-5 mx-4 shadow-2xl mb-4';
+            cardElement.className = `${baseClasses} ${intensityClasses}`;
+          }
+          
+          // If countdown reaches 0, close the challenge
+          if (countdown === 'CLOSED') {
+            this.updateChallengeToClosed();
+            if (this.countdownInterval) {
+              clearInterval(this.countdownInterval);
+              this.countdownInterval = null;
+            }
+          }
+        } else {
+          // No closing_at available, show loading message
+          countdownElement.textContent = 'Loading...';
+        }
+      }
+    }, 1000);
+  }
+
   private async handleOptionClick(optionIndex: number): Promise<void> {
     console.log('Option clicked:', optionIndex);
     
@@ -502,7 +599,7 @@ class ContentScript {
       userId: 'dev-user-123', // Fixed for development
       optionId: option.id,
       amount: 100, // Fixed amount for now
-      tokenName: option.tokenName
+      tokenName: option.token_name
     };
 
     // Send prediction via API
@@ -563,6 +660,12 @@ class ContentScript {
         btn.disabled = true;
         btn.classList.add('opacity-50', 'cursor-not-allowed');
       });
+
+      // Clear countdown timer
+      if (this.countdownInterval) {
+        clearInterval(this.countdownInterval);
+        this.countdownInterval = null;
+      }
     }
   }
 
@@ -578,6 +681,12 @@ class ContentScript {
         btn.disabled = true;
         btn.classList.add('opacity-50', 'cursor-not-allowed');
       });
+
+      // Clear countdown timer
+      if (this.countdownInterval) {
+        clearInterval(this.countdownInterval);
+        this.countdownInterval = null;
+      }
     }
   }
 

@@ -31,6 +31,7 @@ interface ChallengePayload {
     broadcast_timestamp: string;
   };
   timestamp: string;
+  closing_at: string;
 }
 
 export class WebSocketService {
@@ -242,19 +243,19 @@ export class WebSocketService {
     // Transform the payload to match our Challenge interface
     const challenge: Challenge = {
       id: payload.id,
-      streamId: this.streamId!,
-      eventType: payload.event_type,
+      stream_id: this.streamId!,
+      event_type: payload.event_type,
       title: payload.title,
       state: payload.state as 'open' | 'closed' | 'resolved',
-      startedAt: payload.started_at,
-      createdAt: payload.created_at,
-      updatedAt: payload.updated_at,
+      started_at: payload.started_at,
+      created_at: payload.created_at,
+      closing_at: payload.closing_at,
       options: payload.options.map((opt) => ({
         id: opt.id,
         challenge_id: opt.challenge_id,
-        optionKey: opt.option_key || opt.display_name.toLowerCase().replace(/\s+/g, '_'),
-        displayName: opt.display_name,
-        tokenName: opt.token_name,
+        option_key: opt.option_key || opt.display_name.toLowerCase().replace(/\s+/g, '_'),
+        display_name: opt.display_name,
+        token_name: opt.token_name,
         odds: opt.odds || 1.0,
         created_at: opt.created_at,
         updated_at: opt.updated_at,
@@ -267,21 +268,21 @@ export class WebSocketService {
     console.log('🎯 ===== CHALLENGE DETAILS =====');
     console.log('📋 Challenge ID:', challenge.id);
     console.log('📋 Title:', challenge.title);
-    console.log('📋 Stream ID:', challenge.streamId);
-    console.log('📋 Event Type:', challenge.eventType);
+    console.log('📋 Stream ID:', challenge.stream_id);
+    console.log('📋 Event Type:', challenge.event_type);
     console.log('📋 State:', challenge.state);
-    console.log('📋 Started At:', challenge.startedAt);
-    console.log('📋 Created At:', challenge.createdAt);
-    console.log('📋 Updated At:', challenge.updatedAt);
+    console.log('📋 Started At:', challenge.started_at);
+    console.log('📋 Created At:', challenge.created_at);
+    console.log('📋 Closing At:', challenge.closing_at);
     
     console.log('🎲 ===== OPTIONS =====');
     challenge.options.forEach((option, index) => {
       console.log(`  ${index + 1}. Option Details:`);
       console.log(`     ID: ${option.id}`);
       console.log(`     Challenge ID: ${option.challenge_id}`);
-      console.log(`     Option Key: ${option.optionKey}`);
-      console.log(`     Display Name: ${option.displayName}`);
-      console.log(`     Token Name: ${option.tokenName}`);
+      console.log(`     Option Key: ${option.option_key}`);
+      console.log(`     Display Name: ${option.display_name}`);
+      console.log(`     Token Name: ${option.token_name}`);
       console.log(`     Odds: ${option.odds}`);
       console.log(`     Created At: ${option.created_at}`);
       console.log(`     Updated At: ${option.updated_at}`);

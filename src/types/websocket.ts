@@ -20,9 +20,9 @@ export interface StreamStatusResponse {
 export interface ChallengeOption {
   id: string;
   challenge_id: string;
-  optionKey: string;
-  displayName: string;
-  tokenName: string;
+  option_key: string;
+  display_name: string;
+  token_name: string;
   odds?: number;
   created_at?: string;
   updated_at?: string;
@@ -34,13 +34,13 @@ export interface ChallengeOption {
 
 export interface Challenge {
   id: string;
-  streamId: string;
-  eventType: string;
+  stream_id: string;
+  event_type: string;
   title: string;
   state: 'open' | 'closed' | 'resolved';
-  startedAt: string;
-  createdAt?: string;
-  updatedAt?: string;
+  started_at: string;
+  created_at: string;
+  closing_at: string;
   options: ChallengeOption[];
   metadata?: {
     total_options: number;
@@ -48,6 +48,7 @@ export interface Challenge {
     event_type: string;
     broadcast_timestamp: string;
   };
+  timestamp?: string;
 }
 
 export interface PredictionRequest {
