@@ -26,6 +26,7 @@ export interface ChallengeOption {
   odds?: number;
   created_at?: string;
   updated_at?: string;
+  is_winner?: boolean;
   metadata?: {
     created_at?: string;
     updated_at?: string;
@@ -41,6 +42,7 @@ export interface Challenge {
   started_at: string;
   created_at: string;
   closing_at: string;
+  winner_option_id?: string;
   options: ChallengeOption[];
   metadata?: {
     total_options: number;

@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { StreamStatusResponse, Challenge, PredictionRequest, PredictionResponse } from '../types/websocket';
+import { StreamStatusResponse, Challenge, PredictionRequest, PredictionResponse, ChallengeOption } from '../types/websocket';
 
 interface ChallengePayload {
   id: string;
@@ -19,6 +19,7 @@ interface ChallengePayload {
     created_at: string;
     updated_at?: string;
     odds?: number;
+    is_winner?: boolean;
     metadata?: {
       created_at?: string;
       updated_at?: string;
@@ -32,6 +33,12 @@ interface ChallengePayload {
   };
   timestamp: string;
   closing_at: string;
+  winner?: {
+    option_id: string;
+    option_key: string;
+    display_name: string;
+    token_name: string;
+  };
 }
 
 export class WebSocketService {
@@ -156,6 +163,9 @@ export class WebSocketService {
           if (data.type === 'challenge:new') {
             console.log('🎯 Processing challenge:new event');
             this.handleChallengeBroadcast(data.data);
+          } else if (data.type === 'challenge:winner') {
+            console.log('👑 Processing challenge:winner event');
+            this.handleChallengeWinnerBroadcast(data.data);
           } else if (data.type === 'connected') {
             console.log('✅ Successfully connected to stream:', data.streamId);
           } else if (data.type === 'test:simple' || data.type === 'test:message') {
@@ -250,7 +260,7 @@ export class WebSocketService {
       started_at: payload.started_at,
       created_at: payload.created_at,
       closing_at: payload.closing_at,
-      options: payload.options.map((opt) => ({
+      options: payload.options.map((opt): ChallengeOption => ({
         id: opt.id,
         challenge_id: opt.challenge_id,
         option_key: opt.option_key || opt.display_name.toLowerCase().replace(/\s+/g, '_'),
@@ -313,6 +323,79 @@ export class WebSocketService {
     });
     document.dispatchEvent(event);
     console.log('📡 Dispatched challenge-update event');
+  }
+
+  private handleChallengeWinnerBroadcast(payload: ChallengePayload): void {
+    console.log('👑 Handling challenge winner broadcast:', payload);
+    console.log('📋 Payload type:', typeof payload);
+    console.log('📋 Payload keys:', Object.keys(payload));
+    
+    // Transform the payload to match our Challenge interface
+    const challenge: Challenge = {
+      id: payload.id,
+      stream_id: this.streamId!,
+      event_type: payload.event_type,
+      title: payload.title,
+      state: payload.state as 'open' | 'closed' | 'resolved',
+      started_at: payload.started_at,
+      created_at: payload.created_at,
+      closing_at: payload.closing_at,
+      winner_option_id: payload.winner?.option_id,
+      options: payload.options.map((opt): ChallengeOption => ({
+        id: opt.id,
+        challenge_id: opt.challenge_id,
+        option_key: opt.option_key || opt.display_name.toLowerCase().replace(/\s+/g, '_'),
+        display_name: opt.display_name,
+        token_name: opt.token_name,
+        odds: opt.odds || 1.0,
+        is_winner: opt.is_winner || false,
+        created_at: opt.created_at,
+        updated_at: opt.updated_at,
+        metadata: opt.metadata
+      })),
+      metadata: payload.metadata
+    };
+    
+    // Display full winner details in console
+    console.log('👑 ===== WINNER DETAILS =====');
+    console.log('📋 Challenge ID:', challenge.id);
+    console.log('📋 Title:', challenge.title);
+    console.log('📋 Stream ID:', challenge.stream_id);
+    console.log('📋 State:', challenge.state);
+    console.log('👑 Winner Option ID:', challenge.winner_option_id);
+    
+    if (payload.winner) {
+      console.log('🏆 ===== WINNER INFO =====');
+      console.log('🏆 Winner Option ID:', payload.winner.option_id);
+      console.log('🏆 Winner Option Key:', payload.winner.option_key);
+      console.log('🏆 Winner Display Name:', payload.winner.display_name);
+      console.log('🏆 Winner Token Name:', payload.winner.token_name);
+    }
+    
+    console.log('🎲 ===== OPTIONS WITH WINNER STATUS =====');
+    challenge.options.forEach((option, index) => {
+      console.log(`  ${index + 1}. Option Details:`);
+      console.log(`     ID: ${option.id}`);
+      console.log(`     Display Name: ${option.display_name}`);
+      console.log(`     Token Name: ${option.token_name}`);
+      console.log(`     Is Winner: ${option.is_winner ? '👑 YES' : '❌ NO'}`);
+    });
+    
+    console.log('👑 ===== END WINNER DETAILS =====');
+    
+    // Also log the raw payload for debugging
+    console.log('🔍 Raw winner payload for debugging:', JSON.stringify(payload, null, 2));
+    
+    // Dispatch custom event for the content script to handle
+    const event = new CustomEvent('challenge-update', {
+      detail: {
+        type: 'challenge:winner',
+        challenge: challenge,
+        winner: payload.winner
+      }
+    });
+    document.dispatchEvent(event);
+    console.log('📡 Dispatched challenge-winner event');
   }
 
   disconnect(): void {

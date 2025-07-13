@@ -1,7 +1,34 @@
 import { WebSocketService } from '../utils/websocket-service';
-import { Challenge } from '../types/websocket';
+import { Challenge, ChallengeOption } from '../types/websocket';
+
+// Chrome extension types
+declare const chrome: any;
 
 // CSS is automatically injected via manifest.json content_scripts declaration
+
+interface ChallengeUpdateEvent extends CustomEvent {
+  detail: {
+    type: 'challenge:new' | 'challenge:winner';
+    challenge: Challenge;
+    winner?: {
+      option_id: string;
+      option_key: string;
+      display_name: string;
+      token_name: string;
+    };
+  };
+}
+
+interface ServerResponseEvent extends CustomEvent {
+  detail: {
+    type: 'success' | 'failure';
+    message?: string;
+  };
+}
+
+interface OverlayWithCleanup extends HTMLDivElement {
+  cleanup?: () => void;
+}
 
 class ContentScript {
   private container: HTMLDivElement | null = null;
@@ -41,7 +68,7 @@ class ContentScript {
     });
 
     // Listen for wallet status changes from background script
-    chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    chrome.runtime.onMessage.addListener((message: any, _sender: any, sendResponse: (response: any) => void) => {
       if (message.action === 'walletStatusChanged') {
         console.log('Wallet status changed:', message);
         this.refreshWalletStatus();
@@ -109,7 +136,7 @@ class ContentScript {
     });
   }
 
-  private handleChallengeUpdate(payload: any): void {
+  private handleChallengeUpdate(payload: ChallengeUpdateEvent['detail']): void {
     console.log('🎯 Handling challenge update in content script:', payload);
     console.log('📋 Payload type:', payload.type);
     console.log('📋 Payload challenge:', payload.challenge);
@@ -121,27 +148,27 @@ class ContentScript {
         console.log('✅ Displaying challenge with options:', this.currentChallenge.options);
         this.displayChallenge(this.currentChallenge);
       }
-    } else if (payload.eventType === 'UPDATE' && payload.new) {
-      console.log('🔄 Challenge state updated:', payload.new.state);
-      this.currentChallenge = payload.new;
-      if (payload.new.state === 'closed') {
-        this.updateChallengeToClosed();
-      } else if (payload.new.state === 'resolved') {
-        this.updateChallengeToResolved();
-      }
-    } else if (payload.id && payload.title && payload.options) {
-      // Handle direct challenge payload (not nested under 'challenge' property)
-      console.log('🎯 Processing direct challenge payload:', payload);
-      this.currentChallenge = payload;
+    } else if (payload.type === 'challenge:winner' && payload.challenge) {
+      console.log('👑 Processing winner announcement:', payload.challenge);
+      this.currentChallenge = payload.challenge;
       if (this.currentChallenge) {
-        this.displayChallenge(this.currentChallenge);
+        console.log('👑 Displaying winner with options:', this.currentChallenge.options);
+        this.displayChallengeWinner(this.currentChallenge, payload.winner);
       }
+    } else if (payload.challenge && payload.challenge.state === 'closed') {
+      console.log('🔄 Challenge state updated to closed');
+      this.currentChallenge = payload.challenge;
+      this.updateChallengeToClosed();
+    } else if (payload.challenge && payload.challenge.state === 'resolved') {
+      console.log('🔄 Challenge state updated to resolved');
+      this.currentChallenge = payload.challenge;
+      this.updateChallengeToResolved();
     } else {
       console.log('❓ Unknown challenge update type:', payload);
     }
   }
 
-  private handleServerResponse(response: any): void {
+  private handleServerResponse(response: ServerResponseEvent['detail']): void {
     console.log('Handling server response:', response);
     
     if (response.type === 'success') {
@@ -325,8 +352,117 @@ class ContentScript {
       connectWalletMainBtn.addEventListener('click', () => this.openPopup());
     }
 
-    // Start countdown timer (will handle missing closing_at gracefully)
+    // Start countdown timer (will handle missing closingAt gracefully)
     this.startCountdown(challenge);
+  }
+
+  private async displayChallengeWinner(challenge: Challenge, winner?: { option_id: string; option_key: string; display_name: string; token_name: string }): Promise<void> {
+    // Clear existing countdown timer
+    if (this.countdownInterval) {
+      clearInterval(this.countdownInterval);
+      this.countdownInterval = null;
+    }
+
+    // Check wallet connection first
+    await this.checkWalletConnection();
+
+    // Remove existing card if any
+    const existingCard = document.getElementById('prediction-card-container');
+    if (existingCard) {
+      existingCard.remove();
+    }
+
+    // Find the chat container
+    const chatContainer = document.querySelector('.Layout-sc-1xcs6mc-0.gyMdFQ.stream-chat');
+    if (!chatContainer) {
+      console.error('Chat container not found');
+      return;
+    }
+
+    // Create container
+    this.container = document.createElement('div');
+    this.container.id = 'prediction-card-container';
+    
+    // Insert as first child of chat container
+    chatContainer.insertBefore(this.container, chatContainer.firstChild);
+
+    // Build wallet status section
+    const walletStatusClass = this.isWalletConnected ? 'text-green-400' : 'text-red-400';
+    const walletDotClass = this.isWalletConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500';
+    const walletText = this.isWalletConnected ? 'Wallet Connected' : 'Wallet Disconnected';
+    
+    let walletDetails = '';
+    if (this.isWalletConnected && this.walletAddress) {
+      const shortAddress = `${this.walletAddress.substring(0, 6)}...${this.walletAddress.substring(this.walletAddress.length - 4)}`;
+      walletDetails = `<p class="text-xs text-gray-400 font-mono">${shortAddress}</p>`;
+    } else {
+      walletDetails = `
+        <button id="connect-wallet-btn" class="
+          mt-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold 
+          rounded-lg transition-colors duration-200 border-none cursor-pointer
+        ">
+          🔗 Connect Wallet
+        </button>
+      `;
+    }
+
+    // Display winner and options
+    let optionsDisplay = '';
+    if (challenge.options) {
+      optionsDisplay = challenge.options.map((option: ChallengeOption) => {
+        const isWinner = option.is_winner || (winner && option.id === winner.option_id);
+        const bgColor = isWinner ? 'bg-gradient-to-br from-yellow-600 to-yellow-700' : 'bg-gradient-to-br from-gray-600 to-gray-700';
+        const icon = isWinner ? '👑' : '❌';
+        const text = isWinner ? 'WINNER' : 'LOST';
+        
+        return `
+          <div class="${bgColor} rounded-lg p-4 text-center transform transition-all duration-300 ${isWinner ? 'ring-2 ring-yellow-400 shadow-lg' : 'opacity-75'}">
+            <div class="text-2xl mb-2">${icon}</div>
+            <div class="text-white font-bold text-lg">${option.display_name}</div>
+            <div class="text-sm opacity-75">${text}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Inline HTML for the winner card
+    this.container.innerHTML = `
+      <div id="prediction-card" class="mt-16 bg-gradient-to-br from-yellow-900/40 to-black border-yellow-500/60 shadow-yellow-500/30 text-yellow-400 rounded-2xl p-5 mx-4 shadow-2xl mb-4">
+        <div class="text-center mb-5 pb-4 border-b border-current/20">
+          <h3 class="!text-2xl text-white font-bold m-0 drop-shadow-lg">
+            ${challenge.title}
+          </h3>
+          <div class="text-4xl my-3">🏆</div>
+          <p class="text-yellow-400 text-lg font-semibold">Challenge Resolved!</p>
+          ${winner ? `<p class="text-yellow-300 text-sm mt-2">Winner: ${winner.display_name}</p>` : ''}
+          
+          <!-- Wallet Connection Status -->
+          <div class="mt-3 p-3 bg-gray-800/50 rounded-lg">
+            <div class="flex items-center justify-center gap-2 mb-2">
+              <div class="w-2 h-2 ${walletDotClass} rounded-full shadow-lg"></div>
+              <span class="text-sm ${walletStatusClass}">
+                ${walletText}
+              </span>
+            </div>
+            ${walletDetails}
+          </div>
+        </div>
+        
+        <!-- Options Results -->
+        <div class="space-y-3">
+          <h4 class="text-center text-white font-semibold mb-3">Results:</h4>
+          <div class="grid grid-cols-1 gap-3">
+            ${optionsDisplay}
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Add event listener for wallet connect button
+    const connectWalletBtn = this.container.querySelector('#connect-wallet-btn') as HTMLButtonElement;
+    if (connectWalletBtn) {
+      connectWalletBtn.addEventListener('click', () => this.openPopup());
+    }
   }
 
   private async createWaitingMessage(): Promise<void> {
@@ -564,7 +700,7 @@ class ContentScript {
             }
           }
         } else {
-          // No closing_at available, show loading message
+          // No closingAt available, show loading message
           countdownElement.textContent = 'Loading...';
         }
       }
@@ -597,9 +733,9 @@ class ContentScript {
     this.showTokenInputModal(optionIndex, option);
   }
 
-  private showTokenInputModal(optionIndex: number, option: any): void {
+  private showTokenInputModal(optionIndex: number, option: ChallengeOption): void {
     // Create modal overlay
-    const overlay = document.createElement('div');
+    const overlay = document.createElement('div') as OverlayWithCleanup;
     overlay.className = 'fixed inset-0 bg-black/80 backdrop-blur-sm z-[9999] flex items-center justify-center';
     overlay.id = 'token-input-overlay';
     
@@ -611,7 +747,7 @@ class ContentScript {
     modal.innerHTML = `
       <div class="text-center mb-6">
         <h3 class="text-2xl font-bold text-white mb-2">Place Your Bet</h3>
-        <p class="text-purple-400 text-sm">${option.displayName || `Option ${optionIndex + 1}`}</p>
+        <p class="text-purple-400 text-sm">${option.display_name || `Option ${optionIndex + 1}`}</p>
         <div class="w-16 h-1 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full mx-auto mt-4"></div>
       </div>
       
@@ -711,20 +847,20 @@ class ContentScript {
     document.addEventListener('keydown', handleKeyPress);
     
     // Store cleanup function
-    (overlay as any).cleanup = () => {
+    overlay.cleanup = () => {
       document.removeEventListener('keydown', handleKeyPress);
     };
   }
 
   private closeTokenInputModal(): void {
-    const overlay = document.getElementById('token-input-overlay');
+    const overlay = document.getElementById('token-input-overlay') as OverlayWithCleanup;
     if (overlay) {
       const modal = overlay.querySelector('#token-input-modal');
       if (modal) {
         modal.classList.add('scale-95', 'opacity-0');
         setTimeout(() => {
-          if ((overlay as any).cleanup) {
-            (overlay as any).cleanup();
+          if (overlay.cleanup) {
+            overlay.cleanup();
           }
           overlay.remove();
         }, 200);
@@ -751,12 +887,12 @@ class ContentScript {
     }, 3000);
   }
 
-  private async processBet(_optionIndex: number, option: any, tokenName: string, amount: number): Promise<void> {
+  private async processBet(_optionIndex: number, option: ChallengeOption, tokenName: string, amount: number): Promise<void> {
     try {
       // Show loading animation
       this.showLoadingAnimation('Preparing transaction...');
       
-      console.log('Starting MetaMask transaction for:', { tokenName, amount, option: option.displayName });
+      console.log('Starting MetaMask transaction for:', { tokenName, amount, option: option.display_name });
       
       // Direct MetaMask interaction in content script
       const response = await this.sendMetaMaskTransactionDirectly(amount);
@@ -765,7 +901,7 @@ class ContentScript {
       this.hideLoadingAnimation();
       
       if (response && response.success) {
-        this.showTransactionSuccess(tokenName, amount, option.displayName, response.txHash);
+        this.showTransactionSuccess(tokenName, amount, option.display_name, response.txHash);
       } else {
         console.error('Transaction failed:', response?.error);
         this.triggerErrorAnimation(response?.error || 'Transaction failed');
@@ -796,8 +932,6 @@ class ContentScript {
       return { success: false, error: error.message || 'Failed to execute transaction' };
     }
   }
-
-
 
   private showLoadingAnimation(message: string): void {
     const overlay = document.createElement('div');
@@ -860,8 +994,6 @@ class ContentScript {
       overlay.remove();
     });
   }
-
-
 
   private updateChallengeToClosed(): void {
     if (this.container) {
