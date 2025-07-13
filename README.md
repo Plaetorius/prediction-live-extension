@@ -63,12 +63,6 @@ For easier development, we recommend using the [Reload Extensions](https://chrom
   - `/popup`: Popup UI interface
   - `/utils`: Utilities, including MetaMask integration
 
-## Required Permissions
-
-- Scripting
-- ActiveTab
-- Storage
-- Tabs
 
 ## Compatibility
 
