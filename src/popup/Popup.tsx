@@ -30,7 +30,7 @@ const Popup: React.FC = () => {
     return `${addr.substring(0, 6)}...${addr.substring(addr.length - 4)}`;
   };
 
-  // Fonction pour envoyer la transaction sur Chiliz
+  // Fonction pour envoyer la transaction sur Chiliz testnet
   const handleBet = async () => {
     if (!isConnected || !signClient) {
       setTxStatus('Please connect your wallet first.');
@@ -50,7 +50,7 @@ const Popup: React.FC = () => {
           method: 'eth_sendTransaction',
           params: [transaction]
         },
-        chainId: 'eip155:88882'
+        chainId: 'eip155:88882' // Chiliz testnet
       });
       setTxStatus('Transaction sent!');
       setTimeout(() => setTxStatus(null), 3000);
