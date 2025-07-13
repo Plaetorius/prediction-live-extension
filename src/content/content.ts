@@ -1,5 +1,5 @@
 import { WebSocketService } from '../utils/websocket-service';
-import { Challenge } from '../types/websocket';
+import { Challenge, PredictionRequest, PredictionResponse } from '../types/websocket';
 
 // CSS is automatically injected via manifest.json content_scripts declaration
 
@@ -775,22 +775,6 @@ class ContentScript {
       console.error('Error processing bet:', error);
       this.hideLoadingAnimation();
       this.triggerErrorAnimation(error.message || 'Failed to process transaction');
-    // For now, use a fixed amount and token name
-    const predictionRequest: PredictionRequest = {
-      challengeId: this.currentChallenge.id,
-      userId: 'dev-user-123', // Fixed for development
-      optionId: option.id,
-      amount: 100, // Fixed amount for now
-      tokenName: option.token_name
-    };
-
-    // Send prediction via API
-    const response = await this.websocketService.sendPrediction(predictionRequest);
-    
-    if (response.success) {
-      this.showPredictionSuccess(response);
-    } else {
-      this.triggerErrorAnimation(response.message || 'Failed to place prediction');
     }
   }
 
