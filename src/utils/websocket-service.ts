@@ -217,6 +217,13 @@ export class WebSocketService {
     }
   }
 
+  /**
+   * Submits a prediction to the server via REST API (not websocket)
+   * Makes a POST request to /api/predictions/{challengeId}
+   * 
+   * @param predictionRequest - The prediction data including challengeId, optionId, amount, etc.
+   * @returns Promise<PredictionResponse> - Server response indicating success/failure
+   */
   async sendPrediction(predictionRequest: PredictionRequest): Promise<PredictionResponse> {
     try {
       const response = await fetch(`https://prediction-live.vercel.app/api/predictions/${predictionRequest.challengeId}`, {
@@ -228,7 +235,7 @@ export class WebSocketService {
           option_id: predictionRequest.optionId,
           amount: predictionRequest.amount,
           token_name: predictionRequest.tokenName,
-          user_id: predictionRequest.userId,
+          wallet_address: predictionRequest.userId,
         })
       });
 
