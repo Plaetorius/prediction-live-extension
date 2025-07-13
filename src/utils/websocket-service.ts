@@ -228,6 +228,7 @@ export class WebSocketService {
           option_id: predictionRequest.optionId,
           amount: predictionRequest.amount,
           token_name: predictionRequest.tokenName,
+          user_id: predictionRequest.userId,
         })
       });
 
