@@ -892,7 +892,7 @@ class ContentScript {
       // Show loading animation
       this.showLoadingAnimation('Preparing transaction...');
       
-      console.log('Starting MetaMask transaction for:', { tokenName, amount, option: option.displayName, optionId: option.id });
+      console.log('Starting MetaMask transaction for:', { tokenName, amount, option: option.display_name, optionId: option.id });
       
       // Determine team based on option index (0 = Team A, 1 = Team B)
       const team = _optionIndex + 1; // 1 for Team A, 2 for Team B (enum in contract)
@@ -936,7 +936,7 @@ class ContentScript {
       } else {
         // If response is undefined but no error, assume success
         console.log('Transaction sent successfully (no response object)');
-        this.showTransactionSuccess(tokenName, amount, option.displayName);
+        this.showTransactionSuccess(tokenName, amount, option.display_name);
       }
       
       this.hideLoadingAnimation();
