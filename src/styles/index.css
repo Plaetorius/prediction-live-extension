@@ -10,10 +10,40 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background: linear-gradient(135deg, #0B0518 0%, #1a0f2e 100%);
+  overflow: hidden;
 }
 
 /* Extension popup specific styles */
 #root {
   width: 100%;
   height: 100%;
+  position: relative;
+}
+
+/* Glassmorphism utilities */
+@layer utilities {
+  .glass-card {
+    background: rgba(245, 245, 245, 0.08);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(245, 245, 245, 0.15);
+    box-shadow: 0 8px 32px 0 rgba(11, 5, 24, 0.3);
+  }
+  
+  .glass-button {
+    background: rgba(245, 245, 245, 0.1);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(245, 245, 245, 0.2);
+    box-shadow: 0 4px 16px 0 rgba(11, 5, 24, 0.2);
+  }
+  
+  .accent-glow {
+    box-shadow: 0 0 20px rgba(255, 0, 82, 0.3);
+  }
+  
+  .accent-text {
+    color: #FF0052;
+  }
 } 
