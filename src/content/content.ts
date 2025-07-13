@@ -1,5 +1,5 @@
 import { WebSocketService } from '../utils/websocket-service';
-import { Challenge, PredictionRequest, PredictionResponse } from '../types/websocket';
+import { Challenge } from '../types/websocket';
 
 // CSS is automatically injected via manifest.json content_scripts declaration
 
