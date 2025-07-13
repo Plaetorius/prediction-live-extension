@@ -889,62 +889,58 @@ class ContentScript {
 
   private async processBet(_optionIndex: number, option: ChallengeOption, tokenName: string, amount: number): Promise<void> {
     try {
-      // Show loading animation
-      this.showLoadingAnimation('Preparing transaction...');
+      // First, submit prediction to API before initiating transaction
+      this.showLoadingAnimation('Submitting prediction...');
       
-      console.log('Starting MetaMask transaction for:', { tokenName, amount, option: option.display_name, optionId: option.id });
+      console.log('Submitting prediction for:', { tokenName, amount, option: option.display_name, optionId: option.id });
+      
+      const predictionResponse = await this.websocketService.sendPrediction({
+        challengeId: this.currentChallenge?.id || '',
+        userId: this.walletAddress,
+        optionId: option.id,
+        amount: amount,
+        tokenName: tokenName
+      });
+      
+      console.log('Prediction API response:', predictionResponse);
+      
+      if (!predictionResponse.success) {
+        this.hideLoadingAnimation();
+        console.error('Prediction API failed:', predictionResponse.message);
+        this.triggerErrorAnimation(predictionResponse.message || 'Failed to submit prediction');
+        return;
+      }
+      
+      // If prediction was successful, proceed with MetaMask transaction
+      this.showLoadingAnimation('Preparing blockchain transaction...');
       
       // Determine team based on option index (0 = Team A, 1 = Team B)
       const team = _optionIndex + 1; // 1 for Team A, 2 for Team B (enum in contract)
+      
+      console.log('Starting MetaMask transaction for:', { tokenName, amount, option: option.display_name, team });
       
       // Direct MetaMask interaction in content script
       const response = await this.sendMetaMaskTransactionDirectly(amount, team);
       
       console.log('MetaMask transaction response:', response);
+      this.hideLoadingAnimation();
       
-      // If we get here without an error, the transaction was likely successful
-      // Even if response is undefined, if no error was thrown, the transaction probably went through
+      // Show success regardless of response format
       if (response && response.success) {
-        // After successful MetaMask transaction, send prediction to API
-        this.showLoadingAnimation('Submitting prediction...');
-        
-        try {
-          const predictionResponse = await this.websocketService.sendPrediction({
-            challengeId: this.currentChallenge?.id || '',
-            userId: this.walletAddress,
-            optionId: option.id,
-            amount: amount,
-            tokenName: tokenName
-          });
-          
-          console.log('Prediction API response:', predictionResponse);
-          
-          if (predictionResponse.success) {
-            this.showTransactionSuccess(tokenName, amount, option.display_name, response.txHash);
-          } else {
-            console.error('Prediction API failed:', predictionResponse.message);
-            this.triggerErrorAnimation(predictionResponse.message || 'Failed to submit prediction');
-          }
-        } catch (apiError: any) {
-          console.error('Error sending prediction to API:', apiError);
-          this.triggerErrorAnimation('Failed to submit prediction to server');
-        }
+        this.showTransactionSuccess(tokenName, amount, option.display_name, response.txHash);
       } else if (response && response.error) {
-        // Only show error if there's an actual error
         console.error('Transaction failed:', response.error);
         this.triggerErrorAnimation(response.error || 'Transaction failed');
       } else {
-        // If response is undefined but no error, assume success
+        // If response is undefined but no error was thrown, assume success
         console.log('Transaction sent successfully (no response object)');
         this.showTransactionSuccess(tokenName, amount, option.display_name);
       }
       
-      this.hideLoadingAnimation();
-      
     } catch (error: any) {
       console.error('Error processing bet:', error);
       this.hideLoadingAnimation();
-      this.triggerErrorAnimation(error.message || 'Failed to process transaction');
+      this.triggerErrorAnimation(error.message || 'Failed to process bet');
     }
   }
 

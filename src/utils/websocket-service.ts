@@ -226,7 +226,8 @@ export class WebSocketService {
         },
         body: JSON.stringify({
           option_id: predictionRequest.optionId,
-          amount: predictionRequest.amount
+          amount: predictionRequest.amount,
+          token_name: predictionRequest.tokenName,
         })
       });
 
