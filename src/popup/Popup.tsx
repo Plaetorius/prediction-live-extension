@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useWalletConnect } from '../context/WalletConnectContext';
-import { createTransaction, validateTransaction } from '../utils/transaction-config';
 
 const Popup: React.FC = () => {
-  const { isConnected, address, connect, disconnect, loading, signClient } = useWalletConnect();
-  const [txStatus, setTxStatus] = useState<string | null>(null);
+  const { isConnected, address, connect, disconnect, loading } = useWalletConnect();
+  const [txStatus] = useState<string | null>(null);
 
   // Update background script when wallet connection status changes
   useEffect(() => {
@@ -30,40 +29,10 @@ const Popup: React.FC = () => {
     return `${addr.substring(0, 6)}...${addr.substring(addr.length - 4)}`;
   };
 
-  // Fonction pour envoyer la transaction sur Chiliz testnet
-  const handleBet = async () => {
-    if (!isConnected || !signClient) {
-      setTxStatus('Please connect your wallet first.');
-      return;
-    }
-    setTxStatus('Signature in progress...');
-    try {
-      const transaction = createTransaction(88882, {
-        to: '0xbCE7457679913BD81Da8ba3106dF11191141E12D',
-        value: '0x' + (1e18).toString(16), // 1 CHZ
-        data: '0x',
-      });
-      if (!validateTransaction(transaction)) throw new Error('Invalid transaction');
-      await signClient.request({
-        topic: signClient.session.getAll()[0].topic,
-        request: {
-          method: 'eth_sendTransaction',
-          params: [transaction]
-        },
-        chainId: 'eip155:88882' // Chiliz testnet
-      });
-      setTxStatus('Transaction sent!');
-      setTimeout(() => setTxStatus(null), 3000);
-    } catch (err: any) {
-      setTxStatus('Transaction failed: ' + (err?.message || ''));
-      setTimeout(() => setTxStatus(null), 4000);
-    }
-  };
-
   return (
-    <div className="w-80 p-5 font-sans">
+    <div className="w-80 h-80 flex flex-col justify-center items-center p-5 font-sans">
       <h1 className="text-twitch-purple text-center mb-5 text-lg font-semibold">
-        Twitch Title Changer
+        Prediction<span className="text-[#FF0052]">.</span>Live
       </h1>
       <button
         onClick={isConnected ? disconnect : connect}
@@ -81,17 +50,6 @@ const Popup: React.FC = () => {
         ) : (
           'Connect Wallet'
         )}
-      </button>
-      <button
-        onClick={handleBet}
-        disabled={!isConnected || loading}
-        className="
-          mt-4 bg-green-600 text-white border-none py-3 px-6 text-base rounded-lg cursor-pointer
-          w-full transition-colors duration-200 hover:bg-green-700 active:bg-green-800
-          disabled:bg-gray-600 disabled:cursor-not-allowed
-        "
-      >
-        Bet (Send Transaction)
       </button>
       {txStatus && (
         <div className="mt-4 p-3 bg-gray-900 text-white rounded-lg text-center text-sm">
